@@ -40,18 +40,19 @@ export default function OtpVerification() {
     // Example: export const BaseURL = 'http://192.168.1.50:8000/api'
     // Use imported BaseURL and add diagnostics
     console.log('Sending OTP to:', `${BaseURL}/send-otp`);
-    navigation.navigate('info1'); // Navigate to InfoOne screen
-    const res = await axios.post(`${BaseURL}/send-otp`, { phoneNumber: `+91${mobileNumber}` });
+    //navigation.navigate('EnterOtp'); // Navigate to InfoOne screen
+    try{
+      const res = await axios.post(`${BaseURL}/send-otp`, { phoneNumber: `+91${mobileNumber}` });
 
-    console.log('Response from OTP API:', res.data.success);
+      console.log('Response from OTP API:', res.data.success);
 
-    try {
+    
       if (res.data.success) {
         console.log('OTP sent successfully!')
         Alert.alert('OTP sent successfully!');
         setLoading(false);
         // Navigate to EnterOtp screen with mobileNumber
-        // navigation.navigate('EnterOtp', { mobileNumber });
+        navigation.navigate('EnterOtp', { mobileNumber });
       } else {
         console.log('Response from OTP API:', res.data);
         Alert.alert('Failed to send OTP. Please try again.');
@@ -168,7 +169,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: '#000s',
+    color: 'black',
   },
   button: {
     width: '100%',
