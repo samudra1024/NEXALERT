@@ -35,7 +35,7 @@ const InfoThree = () => {
 
       <TouchableOpacity
         style={styles.getStartedButton}
-        onPress={() => navigation.navigate('info1')}>
+        onPress={() => navigation.navigate('OtpVerification')}>
         <Text style={styles.getStartedButtonText}>Get Started</Text>
       </TouchableOpacity>
     </SafeAreaView>
