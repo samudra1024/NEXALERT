@@ -19,7 +19,7 @@ const InfoOne = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => console.log('Skip button pressed')}>
+        <TouchableOpacity onPress={() => navigation.navigate('OtpVerification')}>
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
       </View>
