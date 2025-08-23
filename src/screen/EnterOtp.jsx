@@ -1,81 +1,91 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert } from 'react-native';
-import OtpImage from '../assets/images/OTP.png'; // Ensure this path is correct
 import axios from "axios";
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { BaseURL } from '../config/API';
+import OtpImage from '../assets/images/OTP.png'; // ✅ keep image import at the bottom of imports
 
 export default function EnterOtp() {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [loading, setLoading] = useState(false);
-  const [timer, setTimer] = useState(120); // Actual timer will be set to 120 seconds
+  const [timer, setTimer] = useState(120); // 120 seconds timer
   const [resendActive, setResendActive] = useState(false);
 
+  const inputs = useRef([]);
+  const navigation = useNavigation();
+  const route = useRoute();
+  const mobileNumber = route.params?.mobileNumber;
+
+  // ✅ Timer effect
   useEffect(() => {
     if (timer === 0) {
       setResendActive(true);
       return;
     }
+
     setResendActive(false);
     const interval = setInterval(() => {
-      setTimer(t => t > 0 ? t - 1 : 0);
+      setTimer(t => (t > 0 ? t - 1 : 0));
     }, 1000);
+
     return () => clearInterval(interval);
   }, [timer]);
 
-  const inputs = useRef([]);
-  const navigation = useNavigation();
-
-
-  // Extract mobileNumber correctly using react-navigation
-  const route = useRoute();
-  const mobileNumber = route.params?.mobileNumber;
-
-
+  // ✅ OTP input handler
   const handleChange = (text, index) => {
     if (text.length > 1) return;
     const newOtp = [...otp];
     newOtp[index] = text;
     setOtp(newOtp);
+
     if (text && index < otp.length - 1) {
-      inputs.current[index + 1].focus();
+      inputs.current[index + 1]?.focus();
     }
   };
 
-  const handleResend = () => {
-    setTimer(120); 
-    setResendActive(false);
-    // You can put your resend axios POST here if needed
-    Alert.alert('OTP resent!');
+  // ✅ Resend OTP
+  const handleResend = async () => {
+    try {
+      setTimer(120);
+      setResendActive(false);
+      // example API call (optional)
+      // await axios.post(`${BaseURL}/resend-otp`, { phoneNumber: mobileNumber });
+      Alert.alert('OTP resent!');
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Failed to resend OTP. Please try again.');
+    }
   };
 
-  const handleSubmit = () => {
+  // ✅ Submit OTP
+  const handleSubmit = async () => {
     setLoading(true);
     const otpCode = otp.join('');
+
     if (otpCode.length < 6) {
       Alert.alert('Please enter a complete OTP');
       setLoading(false);
       return;
     }
-    // console.log('Verifying OTP:', otpCode);
-    // console.log('Mobile Number:', mobileNumber);
-    axios.post(`${BaseURL}/verify-otp`, { phoneNumber: mobileNumber, code: otpCode })
-      .then(response => {
-        if (response.data.success) {
-          Alert.alert('OTP verified successfully!');
-          setLoading(false);
-          navigation.navigate('info1'); // Navigate to InfoOne screen
-        } else {
-          Alert.alert('Failed to verify OTP. Please try again.');
-          setLoading(false);
-        }
-      }).catch(error => {
-        console.error(error);
-        setLoading(false);
-      });
+
+    try {
+      const response = await axios.post(`${BaseURL}/verify-otp`, { phoneNumber: mobileNumber, code: otpCode });
+
+      if (response.data.success) {
+        Alert.alert('OTP verified successfully!');
+        navigation.navigate('info1');
+      } else {
+        Alert.alert('Failed to verify OTP. Please try again.');
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Something went wrong. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Defensive: if mobileNumber is not available
+  // ✅ Defensive check for missing mobile number
   if (!mobileNumber) {
     return (
       <View style={styles.container}>
@@ -88,29 +98,31 @@ export default function EnterOtp() {
     <View style={styles.container}>
       <Text style={styles.header}>Verifying OTP</Text>
       <View style={styles.card}>
-        <Image
-          source={OtpImage}
-          style={styles.image}
-        />
+        <Image source={OtpImage} style={styles.image} />
         <Text style={styles.title}>OTP Verification</Text>
         <Text style={styles.subtitle}>
           Enter the OTP sent to <Text style={styles.bold}>{mobileNumber}</Text>
         </Text>
+
+        {/* OTP INPUT FIELDS */}
         <View style={styles.otpContainer}>
           {otp.map((digit, idx) => (
             <TextInput
               key={idx}
               style={styles.otpInput}
               keyboardType="number-pad"
-              inputMode="numeric"
               maxLength={1}
               value={digit}
               onChangeText={text => handleChange(text, idx)}
               ref={ref => (inputs.current[idx] = ref)}
               editable={!loading}
+              selectionColor="black" // ✅ black cursor
+              placeholderTextColor="#999" // ✅ optional
             />
           ))}
         </View>
+
+        {/* SUBMIT BUTTON */}
         <TouchableOpacity
           style={[styles.submitBtn, loading && { backgroundColor: '#cccccc' }]}
           onPress={handleSubmit}
@@ -118,6 +130,8 @@ export default function EnterOtp() {
         >
           <Text style={styles.submitText}>{loading ? 'Loading...' : 'Submit'}</Text>
         </TouchableOpacity>
+
+        {/* RESEND OTP */}
         <View style={{ alignItems: 'center', width: '100%' }}>
           {resendActive ? (
             <TouchableOpacity onPress={handleResend} disabled={loading}>
@@ -132,7 +146,7 @@ export default function EnterOtp() {
       </View>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
@@ -196,6 +210,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     backgroundColor: '#f7faff',
     marginHorizontal: 5,
+   
   },
   submitBtn: {
     backgroundColor: '#298cff',
