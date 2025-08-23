@@ -37,6 +37,9 @@ export default function App() {
         >
           <Stack.Screen name="OtpVerification" component={OtpVerification} />
           <Stack.Screen name="EnterOtp" component={EnterOtp} />
+          <Stack.Screen name="info1" component={InfoOne} />
+          <Stack.Screen name="info2" component={InfoTwo} />
+          <Stack.Screen name="info3" component={InfoThree} />
           {/* <Stack.Screen name="info1" component={InfoOne} />
           <Stack.Screen name="info2" component={InfoTwo} />
           <Stack.Screen name="info3" component={InfoThree} /> */}

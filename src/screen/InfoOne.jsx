@@ -8,11 +8,14 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img1.png'); // Ensure this path is correct
 
 const InfoOne = () => {
+
+    const navigation = useNavigation();
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -37,7 +40,7 @@ const InfoOne = () => {
 
       <TouchableOpacity
         style={styles.nextButton}
-        onPress={() => console.log('Next button pressed')}>
+        onPress={() => navigation.navigate('info2')}>
         <Text style={styles.nextButtonText}>Next</Text>
       </TouchableOpacity>
     </SafeAreaView>

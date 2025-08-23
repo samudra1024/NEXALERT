@@ -8,19 +8,21 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img3.png');
 
 const InfoThree = () => {
+  const navigation = useNavigation();
   return (
     <SafeAreaView style={styles.container}>
       {/* The Skip button has been removed */}
-      
+
       <View style={styles.content}>
         <Image
           // Use require for local images.
-          source={shieldLockIcon} 
+          source={shieldLockIcon}
           style={styles.image}
         />
         <Text style={styles.title}>Precision Filtering with Smart Analysis!</Text>
@@ -33,7 +35,7 @@ const InfoThree = () => {
 
       <TouchableOpacity
         style={styles.getStartedButton}
-        onPress={() => console.log('Get Started button pressed')}>
+        onPress={() => navigation.navigate('info1')}>
         <Text style={styles.getStartedButtonText}>Get Started</Text>
       </TouchableOpacity>
     </SafeAreaView>

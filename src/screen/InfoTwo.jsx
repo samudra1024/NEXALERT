@@ -8,11 +8,14 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
+
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img2.png');
 
 const InfoTwo = () => {
+  const navigation = useNavigation();
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -20,11 +23,11 @@ const InfoTwo = () => {
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
       </View>
-      
+
       <View style={styles.content}>
         <Image
           // Use require for local images.
-          source={shieldLockIcon} 
+          source={shieldLockIcon}
           style={styles.image}
         />
         <Text style={styles.title}>Smart Contact – Simplify & Connect!</Text>
@@ -37,7 +40,7 @@ const InfoTwo = () => {
 
       <TouchableOpacity
         style={styles.nextButton}
-        onPress={() => console.log('Next button pressed')}>
+        onPress={() => navigation.navigate('info3')}>
         <Text style={styles.nextButtonText}>Next</Text>
       </TouchableOpacity>
     </SafeAreaView>
