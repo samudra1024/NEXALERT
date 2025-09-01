@@ -2,6 +2,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Reading existing messages -->
+    <uses-permission android:name="android.permission.READ_SMS" />
+
+    <!-- Receiving incoming SMS via BroadcastReceiver (OTP, etc.) -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+
+    <!-- Sending SMS directly via SmsManager (not via composer UI) -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"
