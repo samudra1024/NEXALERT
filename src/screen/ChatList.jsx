@@ -10,8 +10,9 @@ import {
   StatusBar,
   PermissionsAndroid,
   Platform,
+  AppState,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 
 
@@ -26,38 +27,47 @@ export default function ChatsList() {
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
 
-  const requestSmsPermission = async () => {
-    if (Platform.OS === 'android') {
-      try {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.READ_SMS,
-          {
-            title: 'SMS Permission Required',
-            message: 'This app needs access to read your SMS messages to display them.',
-            buttonNeutral: 'Ask Me Later',
-            buttonNegative: 'Cancel',
-            buttonPositive: 'Allow',
-          }
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      } catch (err) {
-        console.warn('Permission error:', err);
+  const requestSmsPermissions = async () => {
+    try {
+      const hasPermissions = await SmsController.requestAllSmsPermissions();
+      if (!hasPermissions) {
+        Alert.alert('Permissions Required', 'SMS permissions are required for full functionality.');
         return false;
       }
+      return true;
+    } catch (err) {
+      console.warn('Permission error:', err);
+      return false;
     }
-    return true;
   };
 
   const loadSmsMessages = async () => {
     try {
-      const hasPermission = await requestSmsPermission();
-      if (!hasPermission) {
-        Alert.alert('Permission Required', 'SMS permission is required to display messages.');
-        return;
-      }
+      const hasPermissions = await requestSmsPermissions();
+      if (!hasPermissions) return;
       
       const messages = await SmsController.fetchSmsMessages();
       console.log('Total SMS messages fetched:', messages.length);
+      
+      // Check if there are new unread messages and clear local read state for those contacts
+      const currentUnreadContacts = new Set();
+      messages.forEach(msg => {
+        if (parseInt(msg.type) === 1 && parseInt(msg.read) === 0) {
+          currentUnreadContacts.add(msg.address);
+        }
+      });
+      
+      // Remove contacts from readContacts if they have new unread messages
+      setReadContacts(prev => {
+        const newSet = new Set(prev);
+        currentUnreadContacts.forEach(address => {
+          if (newSet.has(address)) {
+            console.log('Removing from read contacts due to new unread:', address);
+            newSet.delete(address);
+          }
+        });
+        return newSet;
+      });
       
       const contactsMap = {};
       
@@ -78,14 +88,18 @@ export default function ChatsList() {
       const contactsList = Object.values(contactsMap).map(contact => {
         const sortedMessages = contact.messages.sort((a, b) => b.date - a.date);
         const latestMessage = sortedMessages[0];
-        const receivedMessages = contact.messages.filter(msg => parseInt(msg.type) === 1);
-        const unreadCount = readContacts.has(contact.id) ? 0 : receivedMessages.length;
+        const unreadMessages = contact.messages.filter(msg => parseInt(msg.type) === 1 && parseInt(msg.read) === 0);
+        
+        // If contact is marked as read locally, show 0 unread
+        const finalUnreadCount = readContacts.has(contact.id) ? 0 : unreadMessages.length;
+        
+        console.log(`Contact ${contact.id}: DB unread=${unreadMessages.length}, Local read=${readContacts.has(contact.id)}, Final=${finalUnreadCount}`);
         
         return {
           ...contact,
           lastMessage: latestMessage.body,
           time: new Date(latestMessage.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-          unread: unreadCount,
+          unread: finalUnreadCount,
           date: latestMessage.date,
           messageCount: contact.messages.length
         };
@@ -100,15 +114,60 @@ export default function ChatsList() {
 
   useEffect(() => {
     loadSmsMessages();
+    
+    // Listen for app state changes
+    const handleAppStateChange = (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadSmsMessages(); // Refresh when app becomes active
+      }
+    };
+    
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    // Periodic refresh to catch external changes (reduced frequency)
+    const interval = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        loadSmsMessages();
+      }
+    }, 10000); // Refresh every 10 seconds when app is active
+    
+    return () => {
+      subscription?.remove();
+      clearInterval(interval);
+    };
   }, []);
+  
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('ChatsList focused, refreshing...');
+      loadSmsMessages();
+    }, [])
+  );
 
-  const markAsRead = (contactId) => {
-    setReadContacts(prev => new Set([...prev, contactId]));
-    setContacts(prevContacts => 
-      prevContacts.map(contact => 
-        contact.id === contactId ? { ...contact, unread: 0 } : contact
-      )
-    );
+  const markAsRead = async (contactId) => {
+    try {
+      console.log('Marking as read:', contactId);
+      
+      // Add to local read set immediately
+      setReadContacts(prev => {
+        const newSet = new Set(prev);
+        newSet.add(contactId);
+        console.log('Updated read contacts:', Array.from(newSet));
+        return newSet;
+      });
+      
+      // Try to mark as read in database (but don't depend on it)
+      try {
+        const result = await SmsController.markAsRead(contactId);
+        console.log('Database mark as read result:', result);
+      } catch (dbError) {
+        console.warn('Database mark as read failed:', dbError);
+      }
+      
+    } catch (error) {
+      console.error('Error in markAsRead:', error);
+    }
   };
 
   const renderItem = ({ item }) => (
@@ -167,7 +226,7 @@ export default function ChatsList() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => Alert.alert('New Chat', 'Feature coming soon!')}
+        onPress={() => navigation.navigate('NewChat')}
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>

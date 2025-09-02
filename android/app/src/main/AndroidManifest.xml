@@ -1,15 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Reading existing messages -->
     <uses-permission android:name="android.permission.READ_SMS" />
-
-    <!-- Receiving incoming SMS via BroadcastReceiver (OTP, etc.) -->
+    <uses-permission android:name="android.permission.WRITE_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
-
-    <!-- Sending SMS directly via SmsManager (not via composer UI) -->
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
       android:name=".MainApplication"
@@ -31,5 +28,11 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
+      
+      <receiver android:name=".SmsReceiver" android:exported="true">
+        <intent-filter android:priority="1000">
+          <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+        </intent-filter>
+      </receiver>
     </application>
 </manifest>

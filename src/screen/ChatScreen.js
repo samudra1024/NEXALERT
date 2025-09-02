@@ -1,5 +1,5 @@
 // screens/ChatScreen.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   View, 
   Text, 
@@ -10,54 +10,103 @@ import {
   StyleSheet,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Keyboard,
+  Animated
 } from "react-native";
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import SmsController from '../../Controller/SmsController';
 
 export default function ChatScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { name } = route.params || {};
+  const { contactId, name } = route.params || {};
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const flatListRef = useRef(null);
+  const buttonScale = useRef(new Animated.Value(1)).current;
 
   const loadSmsMessages = React.useCallback(async () => {
-    if (!name) return;
+    if (!contactId) return;
     try {
       const smsMessages = await SmsController.fetchSmsMessages();
       const formattedMessages = smsMessages
-        .filter(sms => sms.address === name)
-        .map((sms, index) => ({
-          id: `${sms.address}-${sms.date}-${index}`,
-          sender: sms.address === 'me' ? 'me' : sms.address,
+        .filter(sms => sms.address === contactId)
+        .map((sms) => ({
+          id: sms.id,
+          sender: parseInt(sms.type) === 2 ? 'me' : sms.address,
           text: sms.body,
-          time: new Date(sms.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+          time: new Date(parseInt(sms.date)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+          date: parseInt(sms.date)
         }))
-        .sort((a, b) => new Date(a.time) - new Date(b.time));
+        .sort((a, b) => a.date - b.date);
       setMessages(formattedMessages);
     } catch (error) {
       Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
     }
-  }, [name]);
+  }, [contactId]);
 
   useEffect(() => {
     loadSmsMessages();
+    
+    // Periodic refresh to catch external changes
+    const interval = setInterval(() => {
+      loadSmsMessages();
+    }, 3000); // Refresh every 3 seconds
+    
+    return () => {
+      clearInterval(interval);
+    };
   }, [loadSmsMessages]);
+  
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSmsMessages();
+      
+      // Mark messages as read when entering chat
+      if (contactId) {
+        SmsController.markAsRead(contactId).catch(error => {
+          console.error('Error marking as read:', error);
+        });
+      }
+    }, [loadSmsMessages, contactId])
+  );
 
-  const sendMessage = React.useCallback(() => {
-    if (input.trim().length > 0) {
-      const newMessage = {
-        id: `me-${Date.now()}`,
-        sender: "me",
-        text: input,
-        time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-      };
-      setMessages(prev => [...prev, newMessage]);
-      setInput("");
+  const animateButton = () => {
+    Animated.sequence([
+      Animated.timing(buttonScale, {
+        toValue: 0.9,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(buttonScale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
+  const sendMessage = React.useCallback(async () => {
+    if (input.trim().length > 0 && !sending) {
+      animateButton();
+      setSending(true);
+      try {
+        await SmsController.sendSms(contactId, input.trim());
+        setInput("");
+        // Immediately refresh messages
+        await loadSmsMessages();
+      } catch (error) {
+        Alert.alert('Error', 'Failed to send SMS: ' + error.message);
+      } finally {
+        setSending(false);
+      }
     }
-  }, [input]);
+  }, [input, contactId, sending, loadSmsMessages, buttonScale]);
 
   const renderMessage = React.useCallback(({ item }) => (
     <View style={[
@@ -79,12 +128,37 @@ export default function ChatScreen() {
     </View>
   ), []);
 
+  const scrollToBottom = () => {
+    if (flatListRef.current && messages.length > 0) {
+      flatListRef.current.scrollToEnd({ animated: true });
+    }
+  };
+
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      setTimeout(scrollToBottom, 100);
+    });
+    
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0);
+    });
+    
+    return () => {
+      keyboardDidShowListener.remove();
+      keyboardDidHideListener.remove();
+    };
+  }, []);
+
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
+      <KeyboardAvoidingView 
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        enabled={Platform.OS === 'ios'}
+      >
       
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -97,31 +171,57 @@ export default function ChatScreen() {
       </View>
 
       <FlatList
+        ref={flatListRef}
         data={messages}
         keyExtractor={(item) => item.id}
         renderItem={renderMessage}
         style={styles.messagesList}
         contentContainerStyle={styles.messagesContainer}
         showsVerticalScrollIndicator={false}
+        onContentSizeChange={scrollToBottom}
+        onLayout={scrollToBottom}
       />
 
-      <View style={styles.inputContainer}>
-        <TextInput
-          value={input}
-          onChangeText={setInput}
-          placeholder="Type a message..."
-          placeholderTextColor="#adb5bd"
-          style={styles.textInput}
-          multiline
-        />
+      <View style={[styles.inputContainer, Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }]}>
+        <TouchableOpacity style={styles.attachButton}>
+          <Text style={styles.attachButtonText}>+</Text>
+        </TouchableOpacity>
+        
+        <View style={styles.textInputContainer}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Message"
+            placeholderTextColor="#5f6368"
+            style={styles.textInput}
+            multiline
+            maxLength={1000}
+            returnKeyType="send"
+            onSubmitEditing={sendMessage}
+            blurOnSubmit={false}
+          />
+        </View>
+        
         <TouchableOpacity 
           onPress={sendMessage} 
-          style={[styles.sendButton, input.trim() ? styles.sendButtonActive : null]}
+          disabled={sending || !input.trim()}
+          activeOpacity={0.8}
         >
-          <Text style={styles.sendButtonText}>→</Text>
+          <Animated.View 
+            style={[
+              styles.sendButton, 
+              input.trim() && !sending ? styles.sendButtonActive : styles.sendButtonInactive,
+              { transform: [{ scale: buttonScale }] }
+            ]}
+          >
+            <Text style={[styles.sendButtonText, input.trim() && !sending ? styles.sendButtonTextActive : styles.sendButtonTextInactive]}>
+              {sending ? '⏳' : '➤'}
+            </Text>
+          </Animated.View>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -129,6 +229,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8f9fa',
+  },
+  keyboardContainer: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
@@ -167,6 +270,8 @@ const styles = StyleSheet.create({
   messagesContainer: {
     paddingVertical: 16,
     paddingHorizontal: 12,
+    paddingBottom: 20,
+    flexGrow: 1,
   },
   messageContainer: {
     maxWidth: '80%',
@@ -215,36 +320,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     backgroundColor: '#ffffff',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    paddingBottom: Platform.OS === 'ios' ? 8 : 12,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    minHeight: 64,
   },
   textInput: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    backgroundColor: 'transparent',
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 16,
-    color: '#212529',
-    maxHeight: 100,
-    marginRight: 12,
+    color: '#202124',
+    maxHeight: 120,
+    minHeight: 48,
+    textAlignVertical: 'center',
+    lineHeight: 20,
+    fontFamily: Platform.OS === 'ios' ? 'System' : 'Roboto',
   },
   sendButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#e9ecef',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
   },
   sendButtonActive: {
-    backgroundColor: '#2563eb',
+    backgroundColor: '#1a73e8',
+    elevation: 6,
+    shadowOpacity: 0.25,
+  },
+  sendButtonInactive: {
+    backgroundColor: '#dadce0',
+    elevation: 1,
+    shadowOpacity: 0.1,
   },
   sendButtonText: {
     fontSize: 18,
+    fontWeight: '500',
+  },
+  sendButtonTextActive: {
     color: '#ffffff',
+  },
+  sendButtonTextInactive: {
+    color: '#9aa0a6',
+  },
+  attachButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  attachButtonText: {
+    fontSize: 24,
+    color: '#5f6368',
     fontWeight: '300',
+  },
+  textInputContainer: {
+    flex: 1,
+    backgroundColor: '#f1f3f4',
+    borderRadius: 24,
+    marginRight: 8,
+    paddingHorizontal: 4,
   },
 });

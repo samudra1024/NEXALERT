@@ -40,7 +40,7 @@ const InfoOne = () => {
 
       <TouchableOpacity
         style={styles.nextButton}
-        onPress={() => navigation.navigate('info2')}>
+        onPress={() => navigation.navigate('InfoTwo')}>
         <Text style={styles.nextButtonText}>Next</Text>
       </TouchableOpacity>
     </SafeAreaView>

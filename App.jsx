@@ -10,6 +10,7 @@ import InfoTwo from './src/screen/InfoTwo';
 import InfoThree from './src/screen/InfoThree';
 import ChatList from './src/screen/ChatList';
 import ChatScreen from './src/screen/ChatScreen';
+import NewChat from './src/screen/NewChat';
 
 
 const Stack = createStackNavigator();
@@ -47,6 +48,7 @@ export default function App() {
           <Stack.Screen name="InfoThree" component={InfoThree} />
           <Stack.Screen name="ChatsList" component={ChatList} />
           <Stack.Screen name="Chat" component={ChatScreen} />
+          <Stack.Screen name="NewChat" component={NewChat} />
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>
