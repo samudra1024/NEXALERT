@@ -7,53 +7,14 @@ import EnterOtp from './src/screen/EnterOtp';
 import InfoOne from './src/screen/InfoOne';
 import InfoTwo from './src/screen/InfoTwo';
 import InfoThree from './src/screen/InfoThree';
-<<<<<<< HEAD
-import Sample from './src/screen/Sample';
-=======
 import ChatList from './src/screen/ChatList';
 import ChatScreen from './src/screen/ChatScreen';
 
->>>>>>> 0241ee2 (Updated chat code)
 
 const Stack = createStackNavigator();
 
 export default function App() {
   return (
-<<<<<<< HEAD
-    // <GestureHandlerRootView style={{ flex: 1 }}>
-    //   <NavigationContainer>
-    //     <Stack.Navigator 
-    //       initialRouteName="Sample"
-    //       screenOptions={{
-    //         headerShown: false,
-    //         gestureEnabled: true,
-    //         cardStyleInterpolator: ({ current, layouts }) => {
-    //           return {
-    //             cardStyle: {
-    //               transform: [
-    //                 {
-    //                   translateX: current.progress.interpolate({
-    //                     inputRange: [0, 1],
-    //                     outputRange: [layouts.screen.width, 0],
-    //                   }),
-    //                 },
-    //               ],
-    //             },
-    //           };
-    //         },
-    //       }}
-    //     >
-    //       <Stack.Screen name="info1" component={InfoOne} />
-    //       <Stack.Screen name="OtpVerification" component={OtpVerification} />
-    //       <Stack.Screen name="EnterOtp" component={EnterOtp} />
-    //       <Stack.Screen name="info2" component={InfoTwo} />
-    //       <Stack.Screen name="info3" component={InfoThree} />
-    //       <Stack.Screen name="Sample" component={Sample} />
-    //     </Stack.Navigator>
-    //   </NavigationContainer>
-    // </GestureHandlerRootView>
-    <Sample/>
-=======
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer>
         <Stack.Navigator 
@@ -87,6 +48,5 @@ export default function App() {
         </Stack.Navigator>
       </NavigationContainer>
     </GestureHandlerRootView>
->>>>>>> 0241ee2 (Updated chat code)
   );
 }
