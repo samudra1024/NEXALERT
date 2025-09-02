@@ -2,6 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 import OtpVerification from './src/screen/OtpVerification';
 import EnterOtp from './src/screen/EnterOtp';
 import InfoOne from './src/screen/InfoOne';
@@ -18,7 +19,7 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer>
         <Stack.Navigator 
-          initialRouteName="ChatScreen"
+          initialRouteName="InfoOne"
           screenOptions={{
             headerShown: false,
             gestureEnabled: true,
@@ -38,11 +39,12 @@ export default function App() {
             },
           }}
         >
-          {/* <Stack.Screen name="info1" component={InfoOne} />
+
+          <Stack.Screen name="InfoOne" component={InfoOne} />
           <Stack.Screen name="OtpVerification" component={OtpVerification} />
           <Stack.Screen name="EnterOtp" component={EnterOtp} />
-          <Stack.Screen name="info2" component={InfoTwo} />
-          <Stack.Screen name="info3" component={InfoThree} /> */}
+          <Stack.Screen name="InfoTwo" component={InfoTwo} />
+          <Stack.Screen name="InfoThree" component={InfoThree} />
           <Stack.Screen name="ChatsList" component={ChatList} />
           <Stack.Screen name="Chat" component={ChatScreen} />
         </Stack.Navigator>

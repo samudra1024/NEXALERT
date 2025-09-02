@@ -26,10 +26,10 @@ public class SmsModule extends ReactContextBaseJavaModule {
     public void getSmsMessages(Promise promise) {
         try {
             ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
-            Uri uri = Uri.parse("content://sms/inbox");
+            Uri uri = Uri.parse("content://sms");
             String[] projection = {"_id", "address", "body", "date", "type"};
             
-            Cursor cursor = contentResolver.query(uri, projection, null, null, "date DESC LIMIT 10");
+            Cursor cursor = contentResolver.query(uri, projection, null, null, "date DESC");
             WritableArray smsArray = Arguments.createArray();
             
             if (cursor != null) {

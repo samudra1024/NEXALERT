@@ -1,0 +1,6 @@
+Run this command to install AsyncStorage:
+
+npm install @react-native-async-storage/async-storage
+
+Then rebuild the app:
+npx react-native run-android

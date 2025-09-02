@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Image, StyleSheet, Alert } fro
 import axios from "axios";
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { BaseURL } from '../config/API';
+
 import OtpImage from '../assets/images/OTP.png'; // ✅ keep image import at the bottom of imports
 
 export default function EnterOtp() {
@@ -72,8 +73,9 @@ export default function EnterOtp() {
       const response = await axios.post(`${BaseURL}/verify-otp`, { phoneNumber: mobileNumber, code: otpCode });
 
       if (response.data.success) {
+        // OTP verified successfully
         Alert.alert('OTP verified successfully!');
-        navigation.navigate('info1');
+        navigation.navigate('ChatsList');
       } else {
         Alert.alert('Failed to verify OTP. Please try again.');
       }

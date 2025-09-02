@@ -73,7 +73,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 16,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   refreshButton: {
     backgroundColor: '#007AFF',
