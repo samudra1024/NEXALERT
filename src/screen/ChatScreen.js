@@ -1,11 +1,12 @@
 // screens/ChatScreen.js
 import React, { useState } from "react";
 import { View, Text, FlatList, TextInput, TouchableOpacity } from "react-native";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation } from '@react-navigation/native';
+
 
 export default function ChatScreen() {
-  const route = useRoute();
-  const { name } = route.params; // coming from ChatsList
+  const route = useNavigation();
+  const name  = route.params?.name; // coming from ChatsList
 
   const [messages, setMessages] = useState([
     { sender: "me", text: "Hello!", time: "10:00 AM" },
@@ -27,6 +28,7 @@ export default function ChatScreen() {
         keyExtractor={(item, index) => index.toString()}
         renderItem={({ item }) => (
           <View
+            // eslint-disable-next-line react-native/no-inline-styles
             style={{
               alignSelf: item.sender === "me" ? "flex-end" : "flex-start",
               backgroundColor: item.sender === "me" ? "#DCF8C6" : "#EAEAEA",
