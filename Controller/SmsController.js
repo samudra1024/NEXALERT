@@ -15,6 +15,11 @@ class SmsController {
           PermissionsAndroid.PERMISSIONS.RECEIVE_MMS,
         ];
         
+        // Add notification permission for Android 13+
+        if (Platform.Version >= 33) {
+          permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+        }
+        
         const granted = await PermissionsAndroid.requestMultiple(permissions);
         
         return Object.values(granted).every(
