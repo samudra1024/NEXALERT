@@ -2,9 +2,13 @@ package com.frontend;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
+import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
+import android.provider.Telephony;
 import android.telephony.SmsManager;
+import android.app.role.RoleManager;
+import android.os.Build;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
@@ -118,6 +122,120 @@ public class SmsModule extends ReactContextBaseJavaModule {
             promise.resolve(unreadCount);
         } catch (Exception e) {
             promise.reject("UNREAD_COUNT_ERROR", e.getMessage());
+        }
+    }
+    
+    @ReactMethod
+    public void isDefaultSmsApp(Promise promise) {
+        try {
+            String packageName = getReactApplicationContext().getPackageName();
+            boolean isDefault = false;
+            
+            // Check using RoleManager for Android 11+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                RoleManager roleManager = (RoleManager) getReactApplicationContext().getSystemService(getReactApplicationContext().ROLE_SERVICE);
+                if (roleManager != null) {
+                    isDefault = roleManager.isRoleHeld(RoleManager.ROLE_SMS);
+                }
+            } else {
+                // Fallback for older versions
+                String defaultSmsPackage = Telephony.Sms.getDefaultSmsPackage(getReactApplicationContext());
+                isDefault = packageName.equals(defaultSmsPackage);
+            }
+            
+            android.util.Log.d("SmsModule", "Package: " + packageName + ", Is default: " + isDefault);
+            promise.resolve(isDefault);
+        } catch (Exception e) {
+            promise.reject("DEFAULT_SMS_CHECK_ERROR", e.getMessage());
+        }
+    }
+    
+    @ReactMethod
+    public void requestDefaultSmsApp(Promise promise) {
+        try {
+            String packageName = getReactApplicationContext().getPackageName();
+            
+            // Check current default first to avoid redundant prompts
+            String currentDefault = Telephony.Sms.getDefaultSmsPackage(getReactApplicationContext());
+            if (packageName.equals(currentDefault)) {
+                promise.resolve("Already default SMS app");
+                return;
+            }
+            
+            // Use RoleManager for Android 11+ (API 30+)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                RoleManager roleManager = (RoleManager) getReactApplicationContext().getSystemService(getReactApplicationContext().ROLE_SERVICE);
+                
+                if (roleManager != null && roleManager.isRoleAvailable(RoleManager.ROLE_SMS) && !roleManager.isRoleHeld(RoleManager.ROLE_SMS)) {
+                    Intent intent = roleManager.createRequestRoleIntent(RoleManager.ROLE_SMS);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    
+                    android.app.Activity currentActivity = getCurrentActivity();
+                    if (currentActivity != null) {
+                        currentActivity.startActivity(intent);
+                    } else {
+                        getReactApplicationContext().startActivity(intent);
+                    }
+                    promise.resolve("RoleManager SMS request sent");
+                } else if (roleManager != null && roleManager.isRoleHeld(RoleManager.ROLE_SMS)) {
+                    promise.resolve("Already default SMS app via RoleManager");
+                } else {
+                    promise.reject("ROLE_NOT_AVAILABLE", "SMS role not available or accessible");
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+                // Fallback for Android 4.4 to 10 (pre-R)
+                Intent intent = new Intent(Telephony.Sms.Intents.ACTION_CHANGE_DEFAULT);
+                intent.putExtra(Telephony.Sms.Intents.EXTRA_PACKAGE_NAME, packageName);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                
+                android.app.Activity currentActivity = getCurrentActivity();
+                if (currentActivity != null) {
+                    currentActivity.startActivity(intent);
+                } else {
+                    getReactApplicationContext().startActivity(intent);
+                }
+                promise.resolve("Legacy SMS request sent");
+            } else {
+                promise.reject("UNSUPPORTED_VERSION", "Default SMS app requires Android 4.4+");
+            }
+        } catch (Exception e) {
+            promise.reject("DEFAULT_SMS_REQUEST_ERROR", e.getMessage());
+        }
+    }
+    
+    @ReactMethod
+    public void openSmsAppSettings(Promise promise) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.KITKAT) {
+                // Direct intent to default SMS app settings
+                Intent intent = new Intent(android.provider.Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                
+                try {
+                    getReactApplicationContext().startActivity(intent);
+                    promise.resolve("Default apps settings opened");
+                    return;
+                } catch (Exception e) {
+                    // Try alternative method
+                    try {
+                        Intent altIntent = new Intent("android.settings.MANAGE_DEFAULT_APPS_SETTINGS");
+                        altIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        getReactApplicationContext().startActivity(altIntent);
+                        promise.resolve("Default apps settings opened (alt)");
+                        return;
+                    } catch (Exception e2) {
+                        // Final fallback to app settings
+                        Intent appIntent = new Intent(android.provider.Settings.ACTION_APPLICATION_SETTINGS);
+                        appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        getReactApplicationContext().startActivity(appIntent);
+                        promise.resolve("App settings opened");
+                    }
+                }
+            } else {
+                promise.reject("UNSUPPORTED_VERSION", "Default SMS app feature requires Android 4.4+");
+            }
+        } catch (Exception e) {
+            promise.reject("SETTINGS_ERROR", e.getMessage());
         }
     }
 }

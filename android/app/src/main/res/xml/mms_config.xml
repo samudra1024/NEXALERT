@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mms_config version="3">
+    <int name="maxMessageSize">307200</int>
+    <int name="maxImageHeight">480</int>
+    <int name="maxImageWidth">640</int>
+    <bool name="enabledMMS">true</bool>
+    <bool name="enabledSMS">true</bool>
+    <string name="userAgent">frontend</string>
+</mms_config>

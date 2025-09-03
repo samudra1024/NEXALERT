@@ -14,7 +14,10 @@ public class SmsReceiver extends BroadcastReceiver {
     
     @Override
     public void onReceive(Context context, Intent intent) {
-        if ("android.provider.Telephony.SMS_RECEIVED".equals(intent.getAction())) {
+        String action = intent.getAction();
+        if ("android.provider.Telephony.SMS_RECEIVED".equals(action) || 
+            "android.provider.Telephony.SMS_DELIVER".equals(action)) {
+            
             Bundle bundle = intent.getExtras();
             if (bundle != null) {
                 Object[] pdus = (Object[]) bundle.get("pdus");

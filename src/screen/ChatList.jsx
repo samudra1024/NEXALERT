@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
+import DefaultSmsPrompt from './DefaultSmsPrompt';
 
 
 const getAvatarColor = (address) => {
@@ -26,6 +27,7 @@ export default function ChatsList() {
   const navigation = useNavigation();
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
+  const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
 
   const requestSmsPermissions = async () => {
     try {
@@ -113,11 +115,13 @@ export default function ChatsList() {
   };
 
   useEffect(() => {
+    checkDefaultSmsApp();
     loadSmsMessages();
     
     // Listen for app state changes
     const handleAppStateChange = (nextAppState) => {
       if (nextAppState === 'active') {
+        checkDefaultSmsApp();
         loadSmsMessages(); // Refresh when app becomes active
       }
     };
@@ -144,6 +148,17 @@ export default function ChatsList() {
       loadSmsMessages();
     }, [])
   );
+
+  const checkDefaultSmsApp = async () => {
+    try {
+      const shouldShow = await SmsController.shouldShowDefaultPrompt();
+      if (shouldShow) {
+        setShowDefaultPrompt(true);
+      }
+    } catch (error) {
+      console.error('Error checking default SMS app:', error);
+    }
+  };
 
   const markAsRead = async (contactId) => {
     try {
@@ -230,6 +245,15 @@ export default function ChatsList() {
       >
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
+      
+      <DefaultSmsPrompt
+        visible={showDefaultPrompt}
+        onClose={() => setShowDefaultPrompt(false)}
+        onSuccess={() => {
+          setShowDefaultPrompt(false);
+          Alert.alert('Success', 'App is now your default SMS app!');
+        }}
+      />
     </View>
   );
 }

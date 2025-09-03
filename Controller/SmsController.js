@@ -12,6 +12,7 @@ class SmsController {
           PermissionsAndroid.PERMISSIONS.READ_SMS,
           PermissionsAndroid.PERMISSIONS.SEND_SMS,
           PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
+          PermissionsAndroid.PERMISSIONS.RECEIVE_MMS,
         ];
         
         const granted = await PermissionsAndroid.requestMultiple(permissions);
@@ -83,6 +84,61 @@ class SmsController {
     } catch (error) {
       console.error('Error getting unread count:', error);
       return 0;
+    }
+  }
+  
+  // Check if app is default SMS app
+  static async isDefaultSmsApp() {
+    try {
+      const isDefault = await SmsModule.isDefaultSmsApp();
+      return isDefault;
+    } catch (error) {
+      console.error('Error checking default SMS app:', error);
+      return false;
+    }
+  }
+  
+  // Check if we should show default SMS prompt
+  static async shouldShowDefaultPrompt() {
+    try {
+      const isDefault = await this.isDefaultSmsApp();
+      return !isDefault;
+    } catch (error) {
+      console.error('Error checking if should show prompt:', error);
+      return true; // Show prompt on error to be safe
+    }
+  }
+  
+  // Request to become default SMS app (proper order: role first, then permissions)
+  static async requestDefaultSmsApp() {
+    try {
+      // First request ROLE_SMS (modern approach for Android 11+)
+      await SmsModule.requestDefaultSmsApp();
+      
+      // Then request runtime permissions after role is granted
+      setTimeout(async () => {
+        try {
+          await this.requestAllSmsPermissions();
+        } catch (permError) {
+          console.warn('Runtime permissions request failed:', permError);
+        }
+      }, 1000);
+      
+      return true;
+    } catch (error) {
+      console.error('Error requesting default SMS app:', error);
+      throw error;
+    }
+  }
+  
+  // Open SMS app settings
+  static async openSmsAppSettings() {
+    try {
+      await SmsModule.openSmsAppSettings();
+      return true;
+    } catch (error) {
+      console.error('Error opening SMS app settings:', error);
+      throw error;
     }
   }
   
