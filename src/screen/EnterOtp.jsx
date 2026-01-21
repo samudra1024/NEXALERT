@@ -50,7 +50,7 @@ export default function EnterOtp() {
       setTimer(120);
       setResendActive(false);
       // example API call (optional)
-      // await axios.post(`${BaseURL}/resend-otp`, { phoneNumber: mobileNumber });
+      await axios.post(`${BaseURL}/resend-otp`, { phoneNumber: mobileNumber });
       Alert.alert('OTP resent!');
     } catch (error) {
       console.error(error);
