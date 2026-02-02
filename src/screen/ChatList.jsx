@@ -10,9 +10,8 @@ import {
   StatusBar,
   PermissionsAndroid,
   Platform,
-  AppState,
 } from "react-native";
-import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 import DefaultSmsPrompt from './DefaultSmsPrompt';
 
@@ -28,6 +27,7 @@ export default function ChatsList() {
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
   const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
+  const [smsLoaded, setSmsLoaded] = useState(false);
 
   const requestSmsPermissions = async () => {
     try {
@@ -43,15 +43,21 @@ export default function ChatsList() {
     }
   };
 
-  const loadSmsMessages = async () => {
+  const loadSmsMessages = async (forceRefresh = false) => {
     try {
+      if (smsLoaded && !forceRefresh) {
+        return;
+      }
+
       const hasPermissions = await requestSmsPermissions();
-      if (!hasPermissions) return;
+      if (!hasPermissions) {
+        setSmsLoaded(true);
+        return;
+      }
       
       const messages = await SmsController.fetchSmsMessages();
       console.log('Total SMS messages fetched:', messages.length);
       
-      // Check if there are new unread messages and clear local read state for those contacts
       const currentUnreadContacts = new Set();
       messages.forEach(msg => {
         if (parseInt(msg.type) === 1 && parseInt(msg.read) === 0) {
@@ -59,7 +65,6 @@ export default function ChatsList() {
         }
       });
       
-      // Remove contacts from readContacts if they have new unread messages
       setReadContacts(prev => {
         const newSet = new Set(prev);
         currentUnreadContacts.forEach(address => {
@@ -92,10 +97,7 @@ export default function ChatsList() {
         const latestMessage = sortedMessages[0];
         const unreadMessages = contact.messages.filter(msg => parseInt(msg.type) === 1 && parseInt(msg.read) === 0);
         
-        // If contact is marked as read locally, show 0 unread
         const finalUnreadCount = readContacts.has(contact.id) ? 0 : unreadMessages.length;
-        
-        console.log(`Contact ${contact.id}: DB unread=${unreadMessages.length}, Local read=${readContacts.has(contact.id)}, Final=${finalUnreadCount}`);
         
         return {
           ...contact,
@@ -108,46 +110,23 @@ export default function ChatsList() {
       }).sort((a, b) => b.date - a.date);
       
       setContacts(contactsList);
+      setSmsLoaded(true);
     } catch (error) {
       console.error('SMS fetch error:', error);
       Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
+      setSmsLoaded(true);
     }
   };
 
   useEffect(() => {
     checkDefaultSmsApp();
     loadSmsMessages();
-    
-    // Listen for app state changes
-    const handleAppStateChange = (nextAppState) => {
-      if (nextAppState === 'active') {
-        checkDefaultSmsApp();
-        loadSmsMessages(); // Refresh when app becomes active
-      }
-    };
-    
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    
-    // Periodic refresh to catch external changes (reduced frequency)
-    const interval = setInterval(() => {
-      if (AppState.currentState === 'active') {
-        loadSmsMessages();
-      }
-    }, 10000); // Refresh every 10 seconds when app is active
-    
-    return () => {
-      subscription?.remove();
-      clearInterval(interval);
-    };
   }, []);
-  
-  // Refresh when screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
-      console.log('ChatsList focused, refreshing...');
-      loadSmsMessages();
-    }, [])
-  );
+
+  const refreshSmsData = async () => {
+    setSmsLoaded(false);
+    await loadSmsMessages(true);
+  };
 
   const checkDefaultSmsApp = async () => {
     try {
@@ -221,6 +200,12 @@ export default function ChatsList() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Messages</Text>
         <TouchableOpacity 
+          style={styles.refreshButton}
+          onPress={refreshSmsData}
+        >
+          <Text style={styles.refreshText}>↻</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
           style={styles.logoutButton}
           onPress={() => {
             navigation.replace('InfoOne');
@@ -288,6 +273,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
+  },
+  refreshButton: {
+    backgroundColor: '#28a745',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  refreshText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   logoutText: {
     color: '#ffffff',

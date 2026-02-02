@@ -17,6 +17,9 @@ import {
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import SmsController from '../../Controller/SmsController';
 
+// In-memory cache for chat messages
+const chatCache = {};
+
 export default function ChatScreen() {
   const navigation = useNavigation();
   const route = useRoute();
@@ -28,9 +31,17 @@ export default function ChatScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef(null);
   const buttonScale = useRef(new Animated.Value(1)).current;
+  const messagesLoaded = useRef(false);
 
-  const loadSmsMessages = React.useCallback(async () => {
+  const loadSmsMessages = React.useCallback(async (forceRefresh = false) => {
     if (!contactId) return;
+    
+    // Check cache first
+    if (!forceRefresh && chatCache[contactId]) {
+      setMessages(chatCache[contactId]);
+      return;
+    }
+    
     try {
       const smsMessages = await SmsController.fetchSmsMessages();
       const formattedMessages = smsMessages
@@ -43,38 +54,28 @@ export default function ChatScreen() {
           date: parseInt(sms.date)
         }))
         .sort((a, b) => a.date - b.date);
+      
+      // Store in cache
+      chatCache[contactId] = formattedMessages;
       setMessages(formattedMessages);
+      messagesLoaded.current = true;
     } catch (error) {
       Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
     }
   }, [contactId]);
 
   useEffect(() => {
-    loadSmsMessages();
-    
-    // Periodic refresh to catch external changes
-    const interval = setInterval(() => {
-      loadSmsMessages();
-    }, 3000); // Refresh every 3 seconds
-    
-    return () => {
-      clearInterval(interval);
-    };
-  }, [loadSmsMessages]);
-  
-  // Refresh when screen comes into focus
-  useFocusEffect(
-    React.useCallback(() => {
+    if (!messagesLoaded.current) {
       loadSmsMessages();
       
-      // Mark messages as read when entering chat
+      // Mark messages as read
       if (contactId) {
         SmsController.markAsRead(contactId).catch(error => {
           console.error('Error marking as read:', error);
         });
       }
-    }, [loadSmsMessages, contactId])
-  );
+    }
+  }, [loadSmsMessages, contactId]);
 
   const animateButton = () => {
     Animated.sequence([
@@ -98,8 +99,8 @@ export default function ChatScreen() {
       try {
         await SmsController.sendSms(contactId, input.trim());
         setInput("");
-        // Immediately refresh messages
-        await loadSmsMessages();
+        // Force refresh to get new message
+        await loadSmsMessages(true);
       } catch (error) {
         Alert.alert('Error', 'Failed to send SMS: ' + error.message);
       } finally {
