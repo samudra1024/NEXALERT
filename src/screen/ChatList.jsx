@@ -13,7 +13,8 @@ import {
   ScrollView,
   Modal,
   TouchableWithoutFeedback,
-  TextInput
+  TextInput,
+  ActivityIndicator
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
@@ -33,6 +34,11 @@ export default function ChatsList() {
   const [readContacts, setReadContacts] = useState(new Set());
   const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
   const [smsLoaded, setSmsLoaded] = useState(false);
+
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // UI States
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -56,78 +62,43 @@ export default function ChatsList() {
     }
   };
 
-  const loadSmsMessages = async (forceRefresh = false) => {
+  const loadSmsMessages = async (refresh = false, nextPage = 1) => {
     try {
-      if (smsLoaded && !forceRefresh) {
+      if (smsLoaded && !refresh && nextPage === 1) {
         return;
       }
 
-      const hasPermissions = await requestSmsPermissions();
-      if (!hasPermissions) {
-        setSmsLoaded(true);
-        return;
+      if (nextPage === 1) {
+        const hasPermissions = await requestSmsPermissions();
+        if (!hasPermissions) {
+          setSmsLoaded(true);
+          return;
+        }
       }
 
-      const messages = await SmsController.fetchSmsMessages();
-      console.log('Total SMS messages fetched:', messages.length);
+      if (nextPage > 1) {
+        setLoadingMore(true);
+      }
 
-      const currentUnreadContacts = new Set();
-      messages.forEach(msg => {
-        if (parseInt(msg.type) === 1 && parseInt(msg.read) === 0) {
-          currentUnreadContacts.add(msg.address);
-        }
-      });
+      console.log('Loading conversations page:', nextPage);
+      const result = await SmsController.getConversations(nextPage);
 
-      setReadContacts(prev => {
-        const newSet = new Set(prev);
-        currentUnreadContacts.forEach(address => {
-          if (newSet.has(address)) {
-            console.log('Removing from read contacts due to new unread:', address);
-            newSet.delete(address);
-          }
-        });
-        return newSet;
-      });
+      if (nextPage === 1) {
+        setContacts(result.conversations);
+      } else {
+        setContacts(prev => [...prev, ...result.conversations]);
+      }
 
-      const contactsMap = {};
-
-      messages.forEach(msg => {
-        const address = msg.address;
-        if (!contactsMap[address]) {
-          contactsMap[address] = {
-            id: address,
-            name: address,
-            messages: [],
-            avatar: address.charAt(0).toUpperCase(),
-            avatarColor: getAvatarColor(address)
-          };
-        }
-        contactsMap[address].messages.push(msg);
-      });
-
-      const contactsList = Object.values(contactsMap).map(contact => {
-        const sortedMessages = contact.messages.sort((a, b) => b.date - a.date);
-        const latestMessage = sortedMessages[0];
-        const unreadMessages = contact.messages.filter(msg => parseInt(msg.type) === 1 && parseInt(msg.read) === 0);
-
-        const finalUnreadCount = readContacts.has(contact.id) ? 0 : unreadMessages.length;
-
-        return {
-          ...contact,
-          lastMessage: latestMessage.body,
-          time: new Date(latestMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          unread: finalUnreadCount,
-          date: latestMessage.date,
-          messageCount: contact.messages.length
-        };
-      }).sort((a, b) => b.date - a.date);
-
-      setContacts(contactsList);
+      setHasMore(result.hasMore);
+      setPage(result.page);
       setSmsLoaded(true);
+
     } catch (error) {
       console.error('SMS fetch error:', error);
       Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
       setSmsLoaded(true);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -138,7 +109,7 @@ export default function ChatsList() {
 
   const refreshSmsData = async () => {
     setSmsLoaded(false);
-    await loadSmsMessages(true);
+    await loadSmsMessages(true, 1);
   };
 
   const checkDefaultSmsApp = async () => {
@@ -294,6 +265,13 @@ export default function ChatsList() {
         showsVerticalScrollIndicator={true}
         style={styles.flatList}
         contentContainerStyle={{ paddingBottom: 100 }}
+        onEndReached={() => {
+          if (hasMore && !loadingMore && !searchText && selectedCategory === 'All') {
+            loadSmsMessages(false, page + 1);
+          }
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#0000ff" style={{ marginVertical: 20 }} /> : null}
       />
 
       {/* Profile Overflow Menu */}
