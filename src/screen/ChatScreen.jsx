@@ -17,6 +17,7 @@ import {
   TouchableWithoutFeedback
 } from "react-native";
 import { useNavigation, useRoute } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import SmsController from '../../Controller/SmsController';
 
 // In-memory cache for chat messages
@@ -39,6 +40,9 @@ export default function ChatScreen() {
   const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [messageMenuVisible, setMessageMenuVisible] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
 
   const loadSmsMessages = React.useCallback(async (forceRefresh = false) => {
     if (!contactId) return;
@@ -58,7 +62,9 @@ export default function ChatScreen() {
           sender: parseInt(sms.type) === 2 ? 'me' : sms.address,
           text: sms.body,
           time: new Date(parseInt(sms.date)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          date: parseInt(sms.date)
+          date: parseInt(sms.date),
+          status: parseInt(sms.type) === 2 ? (parseInt(sms.read) === 1 ? 'seen' : parseInt(sms.status) === 0 ? 'sent' : 'pending') : null,
+          reaction: null
         }))
         .sort((a, b) => a.date - b.date);
 
@@ -116,24 +122,67 @@ export default function ChatScreen() {
     }
   }, [input, contactId, sending, loadSmsMessages, buttonScale]);
 
+  const addReaction = (emoji) => {
+    if (selectedMessage) {
+      setMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg.id === selectedMessage.id ? { ...msg, reaction: emoji } : msg
+        )
+      );
+      setMessageMenuVisible(false);
+    }
+  };
+
   const renderMessage = React.useCallback(({ item }) => (
-    <View style={[
-      styles.messageContainer,
-      item.sender === "me" ? styles.myMessage : styles.otherMessage
-    ]}>
-      <Text style={[
-        styles.messageText,
-        item.sender === "me" ? styles.myMessageText : styles.otherMessageText
+    <TouchableOpacity
+      onLongPress={() => {
+        setSelectedMessage(item);
+        setMessageMenuVisible(true);
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={[
+        styles.messageContainer,
+        item.sender === "me" ? styles.myMessage : styles.otherMessage
       ]}>
-        {item.text}
-      </Text>
-      <Text style={[
-        styles.timeText,
-        item.sender === "me" ? styles.myTimeText : styles.otherTimeText
-      ]}>
-        {item.time}
-      </Text>
-    </View>
+        <Text style={[
+          styles.messageText,
+          item.sender === "me" ? styles.myMessageText : styles.otherMessageText
+        ]}>
+          {item.text}
+        </Text>
+        <View style={styles.timeContainer}>
+          <Text style={[
+            styles.timeText,
+            item.sender === "me" ? styles.myTimeText : styles.otherTimeText
+          ]}>
+            {item.time}
+          </Text>
+          {item.sender === "me" && (
+            <View style={styles.statusIconContainer}>
+              {item.status === 'seen' ? (
+                <View style={styles.doubleCheck}>
+                  <Text style={[styles.statusIcon, styles.checkSeen]}>✓</Text>
+                  <Text style={[styles.statusIcon, styles.checkSeen, styles.checkOverlap]}>✓</Text>
+                </View>
+              ) : item.status === 'sent' ? (
+                <View style={styles.doubleCheck}>
+                  <Text style={[styles.statusIcon, styles.checkSent]}>✓</Text>
+                  <Text style={[styles.statusIcon, styles.checkSent, styles.checkOverlap]}>✓</Text>
+                </View>
+              ) : (
+                <Text style={styles.clockIcon}>🕐</Text>
+              )}
+            </View>
+          )}
+        </View>
+        {item.reaction && (
+          <View style={styles.reactionBadge}>
+            <Text style={styles.reactionBadgeEmoji}>{item.reaction}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   ), []);
 
   const scrollToBottom = () => {
@@ -186,7 +235,9 @@ export default function ChatScreen() {
           ) : (
             <View style={styles.headerInfo}>
               <Text style={styles.headerName}>{name}</Text>
-              <Text style={styles.headerStatus}>Online</Text>
+              <Text style={[styles.headerStatus, { color: isOnline ? '#28a745' : '#999' }]}>
+                {isOnline ? 'Online' : 'Offline'}
+              </Text>
             </View>
           )}
 
@@ -272,6 +323,73 @@ export default function ChatScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
                   <Text style={styles.menuText}>Block Contact</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* Message Action Menu */}
+        <Modal
+          visible={messageMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMessageMenuVisible(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setMessageMenuVisible(false)}>
+            <View style={styles.modalOverlay}>
+              <View style={styles.messageActionMenu}>
+                {/* Reactions */}
+                <View style={styles.reactionsRow}>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('👍')}>
+                    <Text style={styles.reactionEmoji}>👍</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('❤️')}>
+                    <Text style={styles.reactionEmoji}>❤️</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('😂')}>
+                    <Text style={styles.reactionEmoji}>😂</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('😮')}>
+                    <Text style={styles.reactionEmoji}>😮</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('😢')}>
+                    <Text style={styles.reactionEmoji}>😢</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('🙏')}>
+                    <Text style={styles.reactionEmoji}>🙏</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton}>
+                    <Icon name="plus" size={20} color="#999" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Actions */}
+                <TouchableOpacity style={styles.actionItem} onPress={() => setMessageMenuVisible(false)}>
+                  <Icon name="reply" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Reply</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionItem} onPress={() => setMessageMenuVisible(false)}>
+                  <Icon name="content-copy" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Copy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionItem} onPress={() => setMessageMenuVisible(false)}>
+                  <Icon name="share" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Forward</Text>
+                </TouchableOpacity>
+                {selectedMessage?.sender === 'me' && (
+                  <TouchableOpacity style={styles.actionItem} onPress={() => setMessageMenuVisible(false)}>
+                    <Icon name="pencil" size={20} color="#ddd" />
+                    <Text style={styles.actionText}>Edit</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.actionItem} onPress={() => setMessageMenuVisible(false)}>
+                  <Icon name="star-outline" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Star</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionItem} onPress={() => setMessageMenuVisible(false)}>
+                  <Icon name="delete" size={20} color="#f44336" />
+                  <Text style={[styles.actionText, { color: '#f44336' }]}>Delete</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -389,16 +507,42 @@ const styles = StyleSheet.create({
   otherMessageText: {
     color: '#212529',
   },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
   timeText: {
     fontSize: 11,
-    marginTop: 4,
   },
   myTimeText: {
     color: '#bfdbfe',
-    textAlign: 'right',
   },
   otherTimeText: {
     color: '#adb5bd',
+  },
+  statusIconContainer: {
+    marginLeft: 4,
+  },
+  statusIcon: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  checkSeen: {
+    color: '#4fc3f7',
+  },
+  checkSent: {
+    color: '#bfdbfe',
+  },
+  doubleCheck: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkOverlap: {
+    marginLeft: -8,
+  },
+  clockIcon: {
+    fontSize: 12,
   },
   inputContainer: {
     flexDirection: 'row',
@@ -509,5 +653,69 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     fontWeight: '500',
+  },
+
+  // Message Action Menu
+  messageActionMenu: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: '#2a2a2a',
+    borderRadius: 16,
+    padding: 12,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  reactionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+    marginBottom: 8,
+  },
+  reactionButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  reactionEmoji: {
+    fontSize: 24,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+  },
+  actionText: {
+    fontSize: 16,
+    color: '#ddd',
+    marginLeft: 16,
+  },
+  reactionBadge: {
+    position: 'absolute',
+    bottom: -8,
+    right: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  reactionBadgeEmoji: {
+    fontSize: 16,
   },
 });
