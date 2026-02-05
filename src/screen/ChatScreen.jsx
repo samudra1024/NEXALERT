@@ -30,11 +30,21 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import SmsController from '../../Controller/SmsController';
+import { useTheme } from '../context/ThemeContext';
+import { useSettings } from '../context/SettingsContext';
+import { PinchGestureHandler, State } from 'react-native-gesture-handler';
+// Re-import Animated to ensure we have the correct one for gestures if needed, 
+// though we usually use react-native-reanimated for this.
+// Assuming Animated from react-native is already imported, we might need Reanimated for smoother zoom.
+import { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import Reanimated from 'react-native-reanimated';
 
 // In-memory cache for chat messages
 const chatCache = {};
 
 export default function ChatScreen() {
+  const { theme } = useTheme();
+  const { settings } = useSettings();
   const navigation = useNavigation();
   const route = useRoute();
   const { contactId, name } = route.params || {};
@@ -46,6 +56,25 @@ export default function ChatScreen() {
   const flatListRef = useRef(null);
   const buttonScale = useRef(new Animated.Value(1)).current;
   const messagesLoaded = useRef(false);
+
+  // Zoom State
+  const scale = useSharedValue(1);
+  const onPinchEvent = Reanimated.useAnimatedGestureHandler({
+    onActive: (event) => {
+      if (settings.pinchToZoom) {
+        scale.value = event.scale;
+      }
+    },
+    onEnd: () => {
+      scale.value = withSpring(1);
+    }
+  });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ scale: scale.value }]
+    };
+  });
 
   // New UI States for Header
   const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
@@ -215,56 +244,30 @@ export default function ChatScreen() {
   };
 
   const renderMessage = React.useCallback(({ item }) => (
-    <TouchableOpacity
-      onLongPress={() => {
-        setSelectedMessage(item);
-        setMessageMenuVisible(true);
-      }}
-      activeOpacity={0.7}
-    >
-      <View style={[
-        styles.messageContainer,
-        item.sender === "me" ? styles.myMessage : styles.otherMessage
+    <View style={[
+      styles.messageContainer,
+      item.sender === "me"
+        ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
+        : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }]
+    ]}>
+      <Text style={[
+        styles.messageText,
+        item.sender === "me"
+          ? [styles.myMessageText, { color: theme.chatMyText }]
+          : [styles.otherMessageText, { color: theme.chatOtherText }]
       ]}>
-        <Text style={[
-          styles.messageText,
-          item.sender === "me" ? styles.myMessageText : styles.otherMessageText
-        ]}>
-          {item.text}
-        </Text>
-        <View style={styles.timeContainer}>
-          <Text style={[
-            styles.timeText,
-            item.sender === "me" ? styles.myTimeText : styles.otherTimeText
-          ]}>
-            {item.time}
-          </Text>
-          {item.sender === "me" && (
-            <View style={styles.statusIconContainer}>
-              {item.status === 'seen' ? (
-                <View style={styles.doubleCheck}>
-                  <Text style={[styles.statusIcon, styles.checkSeen]}>✓</Text>
-                  <Text style={[styles.statusIcon, styles.checkSeen, styles.checkOverlap]}>✓</Text>
-                </View>
-              ) : item.status === 'sent' ? (
-                <View style={styles.doubleCheck}>
-                  <Text style={[styles.statusIcon, styles.checkSent]}>✓</Text>
-                  <Text style={[styles.statusIcon, styles.checkSent, styles.checkOverlap]}>✓</Text>
-                </View>
-              ) : (
-                <Text style={styles.clockIcon}>🕐</Text>
-              )}
-            </View>
-          )}
-        </View>
-        {item.reaction && (
-          <View style={styles.reactionBadge}>
-            <Text style={styles.reactionBadgeEmoji}>{item.reaction}</Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
-  ), []);
+        {item.text}
+      </Text>
+      <Text style={[
+        styles.timeText,
+        item.sender === "me"
+          ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
+          : [styles.otherTimeText, { color: theme.textSecondary }]
+      ]}>
+        {item.time}
+      </Text>
+    </View>
+  ), [theme]);
 
   const scrollToBottom = () => {
     if (flatListRef.current && messages.length > 0) {
@@ -289,8 +292,8 @@ export default function ChatScreen() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <View style={[styles.container, { backgroundColor: theme.surface }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -299,15 +302,16 @@ export default function ChatScreen() {
       >
 
         {/* Enhanced Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backTouch}>
-            <Text style={styles.backButton}>←</Text>
+            <Text style={[styles.backButton, { color: theme.text }]}>←</Text>
           </TouchableOpacity>
 
           {isSearchVisible ? (
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: theme.text }]}
               placeholder="Search in chat..."
+              placeholderTextColor={theme.textSecondary}
               value={searchText}
               onChangeText={setSearchText}
               autoFocus
@@ -315,62 +319,56 @@ export default function ChatScreen() {
             />
           ) : (
             <View style={styles.headerInfo}>
-              <Text style={styles.headerName}>{name}</Text>
-              <Text style={[styles.headerStatus, { color: isOnline ? '#28a745' : '#999' }]}>
-                {isOnline ? 'Online' : 'Offline'}
-              </Text>
+              <Text style={[styles.headerName, { color: theme.text }]}>{name}</Text>
+              <Text style={styles.headerStatus}>Online</Text>
             </View>
           )}
 
           <View style={styles.headerActions}>
             {!isSearchVisible && (
-              <TouchableOpacity style={styles.iconButton} onPress={() => setIsSearchVisible(true)}>
-                <Text style={styles.iconText}>🔍</Text>
+              <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
+                <Text style={[styles.searchIconText, { color: theme.text }]}>🔍</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
-              <Text style={styles.iconText}>⋮</Text>
+              <Text style={[styles.iconText, { color: theme.text }]}>⋮</Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderMessage}
-          style={styles.messagesList}
-          contentContainerStyle={styles.messagesContainer}
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={(w, h) => {
-            // Only scroll to bottom on initial load or sending message, not when loading previous
-            if (page === 1 && !loadingMore) {
-              scrollToBottom();
-            }
-          }}
-          onLayout={scrollToBottom}
-          onScroll={({ nativeEvent }) => {
-            if (nativeEvent.contentOffset.y <= 10 && hasMore && !loadingMore && messages.length > 0) {
-              loadSmsMessages(true, page + 1);
-            }
-          }}
-          scrollEventThrottle={16}
-          ListHeaderComponent={loadingMore ? <ActivityIndicator size="small" color="#0000ff" style={{ marginVertical: 10 }} /> : null}
-        />
+        <PinchGestureHandler onGestureEvent={onPinchEvent}>
+          <Reanimated.View style={[{ flex: 1 }, animatedStyle]}>
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              renderItem={renderMessage}
+              style={styles.messagesList}
+              contentContainerStyle={styles.messagesContainer}
+              showsVerticalScrollIndicator={false}
+              onContentSizeChange={scrollToBottom}
+              onLayout={scrollToBottom}
+            />
+          </Reanimated.View>
+        </PinchGestureHandler>
 
-        <View style={[styles.inputContainer, Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }]}>
+        <View style={[
+          styles.inputContainer,
+          { backgroundColor: theme.background, borderTopColor: theme.border },
+          Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }
+        ]}>
           <TouchableOpacity style={styles.attachButton}>
-            <Text style={styles.attachButtonText}>+</Text>
+            <Text style={[styles.attachButtonText, { color: theme.textSecondary }]}>+</Text>
           </TouchableOpacity>
 
-          <View style={styles.textInputContainer}>
+          <View style={[styles.textInputContainer, { backgroundColor: theme.inputBg }]}>
             <TextInput
               value={input}
               onChangeText={setInput}
               placeholder="Message"
-              placeholderTextColor="#5f6368"
-              style={styles.textInput}
+              placeholderTextColor={theme.textSecondary}
+              style={[styles.textInput, { color: theme.text }]}
               multiline
               maxLength={1000}
               returnKeyType="send"
@@ -387,7 +385,7 @@ export default function ChatScreen() {
             <Animated.View
               style={[
                 styles.sendButton,
-                input.trim() && !sending ? styles.sendButtonActive : styles.sendButtonInactive,
+                input.trim() && !sending ? [styles.sendButtonActive, { backgroundColor: theme.primary }] : [styles.sendButtonInactive, { backgroundColor: theme.mode === 'dark' ? '#3e4042' : '#dadce0' }],
                 { transform: [{ scale: buttonScale }] }
               ]}
             >
@@ -556,6 +554,21 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 22, // Bigger icons
+    color: '#555',
+  },
+  searchIconButton: {
+    marginLeft: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f0f2f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e1e4e8',
+  },
+  searchIconText: {
+    fontSize: 18,
     color: '#555',
   },
 
