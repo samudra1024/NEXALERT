@@ -18,6 +18,8 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 import DefaultSmsPrompt from './DefaultSmsPrompt';
+import { useTheme } from '../context/ThemeContext';
+import { Switch } from 'react-native';
 
 const getAvatarColor = (address) => {
   const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
@@ -28,6 +30,7 @@ const getAvatarColor = (address) => {
 const CATEGORIES = ['All', 'Family', 'Official', 'Important'];
 
 export default function ChatsList() {
+  const { theme, toggleTheme } = useTheme();
   const navigation = useNavigation();
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
@@ -200,7 +203,7 @@ export default function ChatsList() {
 
   const renderItem = ({ item }) => (
     <TouchableOpacity
-      style={styles.chatItem}
+      style={[styles.chatItem, { backgroundColor: theme.background }]}
       onPress={() => {
         markAsRead(item.id);
         navigation.navigate("Chat", { contactId: item.id, name: item.name });
@@ -211,17 +214,17 @@ export default function ChatsList() {
       </View>
 
       <View style={styles.chatContent}>
-        <Text style={styles.contactName}>{item.name}</Text>
-        <Text style={styles.lastMessage} numberOfLines={1}>
+        <Text style={[styles.contactName, { color: theme.text }]}>{item.name}</Text>
+        <Text style={[styles.lastMessage, { color: theme.textSecondary }]} numberOfLines={1}>
           {item.lastMessage}
         </Text>
       </View>
 
       <View style={styles.timeContainer}>
-        <Text style={styles.timeText}>{item.time}</Text>
+        <Text style={[styles.timeText, { color: theme.textSecondary }]}>{item.time}</Text>
         {item.unread > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{item.unread}</Text>
+          <View style={[styles.unreadBadge, { backgroundColor: theme.primary }]}>
+            <Text style={[styles.unreadText, { color: theme.onPrimary }]}>{item.unread}</Text>
           </View>
         )}
       </View>
@@ -229,40 +232,41 @@ export default function ChatsList() {
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
 
       {/* Enhanced Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
         {isSearchVisible ? (
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search messages..."
+            placeholderTextColor={theme.textSecondary}
             value={searchText}
             onChangeText={setSearchText}
             autoFocus
             onBlur={() => !searchText && setIsSearchVisible(false)}
           />
         ) : (
-          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Messages</Text>
         )}
 
         <View style={styles.headerActions}>
           {!isSearchVisible && (
-            <TouchableOpacity style={styles.iconButton} onPress={() => setIsSearchVisible(true)}>
-              <Text style={styles.iconText}>🔍</Text>
+            <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
+              <Text style={[styles.searchIconText, { color: theme.text }]}>🔍</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            style={styles.iconButton}
+            style={[styles.iconButton, { marginLeft: 12 }]} // Added margin to separate from search
             onPress={refreshSmsData}
           >
-            <Text style={styles.iconText}>↻</Text>
+            <Text style={[styles.iconText, { color: theme.text }]}>↻</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
-            <View style={styles.profileAvatar}>
+            <View style={[styles.profileAvatar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <Text style={styles.profileAvatarText}>👤</Text>
             </View>
           </TouchableOpacity>
@@ -270,19 +274,26 @@ export default function ChatsList() {
       </View>
 
       {/* Category Bar */}
-      <View style={styles.categoryBarContainer}>
+      <View style={[styles.categoryBarContainer, { borderBottomColor: theme.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScrollView}>
           {CATEGORIES.map(cat => (
             <TouchableOpacity
               key={cat}
-              style={[styles.categoryPill, selectedCategory === cat && styles.categoryPillActive]}
+              style={[
+                styles.categoryPill,
+                { backgroundColor: selectedCategory === cat ? theme.primary : theme.surface },
+                selectedCategory === cat && styles.categoryPillActive
+              ]}
               onPress={() => setSelectedCategory(cat)}
             >
-              <Text style={[styles.categoryText, selectedCategory === cat && styles.categoryTextActive]}>{cat}</Text>
+              <Text style={[
+                styles.categoryText,
+                { color: selectedCategory === cat ? theme.onPrimary : theme.textSecondary }
+              ]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity style={styles.addCategoryButton}>
-            <Text style={styles.addCategoryText}>+</Text>
+          <TouchableOpacity style={[styles.addCategoryButton, { backgroundColor: theme.surface }]}>
+            <Text style={[styles.addCategoryText, { color: theme.textSecondary }]}>+</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -305,17 +316,94 @@ export default function ChatsList() {
       >
         <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
           <View style={styles.modalOverlay}>
-            <View style={styles.menuContainer}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Settings</Text>
+            <View style={[styles.menuContainer, { backgroundColor: theme.background, shadowColor: theme.mode === 'dark' ? '#fff' : '#000' }]}>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('YourProfile');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>👤</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Your Profile</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Recycle Bin</Text>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('Archived');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>🗄️</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Archived</Text>
               </TouchableOpacity>
+
               <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Edit Categories</Text>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>✓</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Mark All as Read</Text>
               </TouchableOpacity>
-              <View style={styles.divider} />
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>✎</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Edit Categories</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>🗑️</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Recycle Bin</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('Settings');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>⚙️</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Settings</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>❓</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Help & Feedback</Text>
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+              <View style={[styles.menuItem, { justifyContent: 'space-between' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                    <Text style={styles.menuIcon}>{theme.mode === 'light' ? '☀️' : '🌙'}</Text>
+                  </View>
+                  <Text style={[styles.menuText, { color: theme.text }]}>Dark Mode</Text>
+                </View>
+                <Switch
+                  value={theme.mode === 'dark'}
+                  onValueChange={toggleTheme}
+                  trackColor={{ false: "#767577", true: theme.primary }}
+                  thumbColor={theme.mode === 'dark' ? "#f4f3f4" : "#f4f3f4"}
+                />
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
@@ -323,7 +411,10 @@ export default function ChatsList() {
                   navigation.replace('InfoOne');
                 }}
               >
-                <Text style={[styles.menuText, { color: '#dc3545' }]}>Logout</Text>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Text style={styles.menuIcon}>🚪</Text>
+                </View>
+                <Text style={[styles.menuText, { color: theme.danger }]}>Logout</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -388,6 +479,21 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 20,
+    color: '#333',
+  },
+  searchIconButton: {
+    marginLeft: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f0f2f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e1e4e8',
+  },
+  searchIconText: {
+    fontSize: 18,
     color: '#333',
   },
   profileButton: {
@@ -553,18 +659,31 @@ const styles = StyleSheet.create({
     minWidth: 180,
   },
   menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 8,
+  },
+  menuIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f0f2f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  menuIcon: {
+    fontSize: 16,
+    color: '#555',
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
     fontWeight: '500',
   },
   divider: {
     height: 1,
-    backgroundColor: '#eee',
     marginVertical: 4,
   },
 });
