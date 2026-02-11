@@ -9,12 +9,14 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img3.png');
 
 const InfoThree = () => {
   const navigation = useNavigation();
+  const { theme } = useTheme();
   return (
     <SafeAreaView style={styles.container}>
       {/* The Skip button has been removed */}
@@ -29,12 +31,12 @@ const InfoThree = () => {
         <View style={styles.paginationContainer}>
           <View style={[styles.dot, styles.inactiveDot]} />
           <View style={[styles.dot, styles.inactiveDot]} />
-          <View style={[styles.dot, styles.activeDot]} />
+          <View style={[styles.dot, styles.activeDot, { backgroundColor: theme.primary }]} />
         </View>
       </View>
 
       <TouchableOpacity
-        style={styles.getStartedButton}
+        style={[styles.getStartedButton, { backgroundColor: theme.primary }]}
         onPress={() => navigation.navigate('OtpVerification')}>
         <Text style={styles.getStartedButtonText}>Get Started</Text>
       </TouchableOpacity>

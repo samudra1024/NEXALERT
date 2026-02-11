@@ -14,18 +14,25 @@ import {
   Keyboard,
   Animated,
   Modal,
-  TouchableWithoutFeedback
+  Image,
 } from "react-native";
+import {
+  PinchGestureHandler,
+  State,
+  TouchableWithoutFeedback
+} from 'react-native-gesture-handler';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import SmsController from '../../Controller/SmsController';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
-import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 // Re-import Animated to ensure we have the correct one for gestures if needed, 
 // though we usually use react-native-reanimated for this.
 // Assuming Animated from react-native is already imported, we might need Reanimated for smoother zoom.
-import { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import { useSharedValue, useAnimatedStyle, withSpring, FadeInUp, FadeInRight, FadeInLeft } from 'react-native-reanimated';
 import Reanimated from 'react-native-reanimated';
+import ScalePressable from '../components/animations/ScalePressable';
+import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Image as ImageIcon } from 'lucide-react-native';
+import { launchImageLibrary } from 'react-native-image-picker';
 
 // In-memory cache for chat messages
 const chatCache = {};
@@ -40,6 +47,12 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [editingMessage, setEditingMessage] = useState(null);
+  // Media Sharing State
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
+  const [selectedMessages, setSelectedMessages] = useState([]);
+  const isSelectionMode = selectedMessages.length > 0;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef(null);
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -128,8 +141,138 @@ export default function ChatScreen() {
     ]).start();
   };
 
+  const handleSelectMessage = (messageId) => {
+    setSelectedMessages(prev => {
+      if (prev.includes(messageId)) {
+        return prev.filter(id => id !== messageId);
+      } else {
+        return [...prev, messageId];
+      }
+    });
+  };
+
+  const handleLongPress = React.useCallback((message) => {
+    // If we are already editing, don't allow selection? Or just switch modes.
+    // For now, let's allow selection to override or coexist.
+    // Use callback ref or access state directly if stable.
+    if (!isSelectionMode) {
+      if (editingMessage) {
+        handleCancelEdit();
+      }
+      setSelectedMessages([message.id]);
+    } else {
+      handleSelectMessage(message.id);
+    }
+  }, [isSelectionMode, editingMessage, selectedMessages]);
+
+  const handleMessagePress = React.useCallback((message) => {
+    if (isSelectionMode) {
+      handleSelectMessage(message.id);
+    }
+  }, [isSelectionMode]);
+
+  const handleDeleteSelected = async () => {
+    Alert.alert(
+      "Delete Messages",
+      `Are you sure you want to delete ${selectedMessages.length} message${selectedMessages.length > 1 ? 's' : ''}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await SmsController.deleteSms(selectedMessages);
+              setSelectedMessages([]);
+              await loadSmsMessages(true);
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete messages: ' + error.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  const handleEditSelected = () => {
+    if (selectedMessages.length === 1) {
+      const msgId = selectedMessages[0];
+      const msg = messages.find(m => m.id === msgId);
+      if (msg) {
+        setEditingMessage(msg);
+        setInput(msg.text);
+        setSelectedMessages([]);
+      }
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessage(null);
+    setInput("");
+  };
+
+  const handleUpdateMessage = () => {
+    if (input.trim().length > 0 && editingMessage) {
+      const updatedMessages = messages.map(msg =>
+        msg.id === editingMessage.id ? { ...msg, text: input.trim(), isEdited: true } : msg
+      );
+      setMessages(updatedMessages);
+      // Update cache
+      chatCache[contactId] = updatedMessages;
+
+      handleCancelEdit();
+    }
+  };
+
+  const handleSelectImage = async () => {
+    const options = {
+      mediaType: 'photo',
+      includeBase64: false,
+    };
+
+    try {
+      const result = await launchImageLibrary(options);
+      if (result.assets && result.assets[0]) {
+        setSelectedImage(result.assets[0]);
+        setIsPreviewVisible(true);
+      }
+    } catch (error) {
+      console.log('ImagePicker Error: ', error);
+    }
+  };
+
+  const handleSendImage = async () => {
+    if (selectedImage) {
+      // Create a mock message for the image
+      const newMessage = {
+        id: Date.now().toString(),
+        address: contactId,
+        body: "📷 Image", // Fallback text
+        date: Date.now(),
+        date_sent: Date.now(),
+        read: 1,
+        type: 2, // Outgoing
+        status: -1,
+        sender: 'me',
+        text: "📷 Image",
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        imageUri: selectedImage.uri // Custom property
+      };
+
+      setMessages(prev => [newMessage, ...prev]);
+      setIsPreviewVisible(false);
+      setSelectedImage(null);
+      // In a real app, you would upload this or send via MMS
+    }
+  };
+
   const sendMessage = React.useCallback(async () => {
     if (input.trim().length > 0 && !sending) {
+      if (editingMessage) {
+        handleUpdateMessage();
+        return;
+      }
+
       animateButton();
       setSending(true);
       try {
@@ -143,33 +286,118 @@ export default function ChatScreen() {
         setSending(false);
       }
     }
-  }, [input, contactId, sending, loadSmsMessages, buttonScale]);
+  }, [input, contactId, sending, loadSmsMessages, buttonScale, editingMessage]);
 
-  const renderMessage = React.useCallback(({ item }) => (
-    <View style={[
-      styles.messageContainer,
-      item.sender === "me"
-        ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
-        : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }]
-    ]}>
-      <Text style={[
-        styles.messageText,
-        item.sender === "me"
-          ? [styles.myMessageText, { color: theme.chatMyText }]
-          : [styles.otherMessageText, { color: theme.chatOtherText }]
-      ]}>
-        {item.text}
-      </Text>
-      <Text style={[
-        styles.timeText,
-        item.sender === "me"
-          ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
-          : [styles.otherTimeText, { color: theme.textSecondary }]
-      ]}>
-        {item.time}
-      </Text>
-    </View>
-  ), [theme]);
+  const shouldShowDateSeparator = (currentMessage, previousMessage) => {
+    if (!previousMessage) return true; // First message always shows date
+
+    const currentDate = new Date(currentMessage.date);
+    const previousDate = new Date(previousMessage.date);
+
+    // If same day, don't show separator
+    if (
+      currentDate.getDate() === previousDate.getDate() &&
+      currentDate.getMonth() === previousDate.getMonth() &&
+      currentDate.getFullYear() === previousDate.getFullYear()
+    ) {
+      return false;
+    }
+
+    return true;
+  };
+
+  const renderDateSeparator = (dateTimestamp) => {
+    const date = new Date(dateTimestamp);
+    const today = new Date();
+    const isToday =
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+
+    // Don't show separator for today's messages
+    if (isToday) return null;
+
+    return (
+      <View style={{ alignItems: 'center', marginVertical: 12 }}>
+        <View style={{ backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
+          <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '500' }}>
+            {date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  const renderMessage = React.useCallback(({ item, index }) => {
+    const previousMessage = messages[index + 1]; // Messages are sorted desc, so previous is +1
+    // Actually, messages in FlatList usually sorted ascending for chat?
+    // Let's check loadSmsMessages: .sort((a, b) => a.date - b.date);
+    // So messages[0] is oldest.
+    // Wait, typical chat flatlist with inverted={false} means index 0 is top (oldest).
+    // Let's assume index 0 is oldest.
+    // Then previous message is index - 1.
+
+    // In loadSmsMessages: 100:         .sort((a, b) => a.date - b.date); 
+    // This sorts ascending (oldest first).
+    // So for item at index `i`, previous message is `i - 1`.
+
+    const prevMsg = index > 0 ? messages[index - 1] : null;
+    const showDate = shouldShowDateSeparator(item, prevMsg);
+
+    return (
+      <View>
+        {showDate && renderDateSeparator(item.date)}
+        <Reanimated.View
+          entering={item.sender === "me" ? FadeInRight.springify() : FadeInLeft.springify()}
+          style={{ marginBottom: 4 }}
+        >
+          <TouchableWithoutFeedback
+            onLongPress={() => handleLongPress(item)}
+            onPress={() => handleMessagePress(item)}
+            delayLongPress={300}
+          >
+            <View
+              style={[
+                styles.messageContainer,
+                item.sender === "me"
+                  ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
+                  : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }],
+                selectedMessages.includes(item.id) && { backgroundColor: theme.primary + '80', borderColor: theme.primary, borderWidth: 1 } // Highlight selected
+              ]}>
+              <Text style={[
+                styles.messageText,
+                item.sender === "me"
+                  ? [styles.myMessageText, { color: theme.chatMyText }]
+                  : [styles.otherMessageText, { color: theme.chatOtherText }]
+              ]}>
+                {item.text}
+              </Text>
+              {item.imageUri && (
+                <Image
+                  source={{ uri: item.imageUri }}
+                  style={{ width: 200, height: 200, borderRadius: 8, marginTop: 4 }}
+                  resizeMode="cover"
+                />
+              )}
+              <View style={styles.messageFooter}>
+                <Text style={[
+                  styles.timeText,
+                  item.sender === "me"
+                    ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
+                    : [styles.otherTimeText, { color: theme.textSecondary }]
+                ]}>
+                  {item.time}
+                  {item.isEdited && <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text>}
+                </Text>
+              </Text>
+              {selectedMessages.includes(item.id) && <Check size={14} color={theme.text} style={{ marginLeft: 8 }} />}
+            </View>
+
+          </TouchableWithoutFeedback>
+        </Reanimated.View>
+      </View >
+    );
+  }, [theme, handleLongPress, handleMessagePress, selectedMessages, messages]);
 
   const scrollToBottom = () => {
     if (flatListRef.current && messages.length > 0) {
@@ -204,39 +432,63 @@ export default function ChatScreen() {
       >
 
         {/* Enhanced Header */}
-        <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backTouch}>
-            <Text style={[styles.backButton, { color: theme.text }]}>←</Text>
-          </TouchableOpacity>
-
-          {isSearchVisible ? (
-            <TextInput
-              style={[styles.searchInput, { color: theme.text }]}
-              placeholder="Search in chat..."
-              placeholderTextColor={theme.textSecondary}
-              value={searchText}
-              onChangeText={setSearchText}
-              autoFocus
-              onBlur={() => !searchText && setIsSearchVisible(false)}
-            />
-          ) : (
-            <View style={styles.headerInfo}>
-              <Text style={[styles.headerName, { color: theme.text }]}>{name}</Text>
-              <Text style={styles.headerStatus}>Online</Text>
-            </View>
-          )}
-
-          <View style={styles.headerActions}>
-            {!isSearchVisible && (
-              <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
-                <Text style={[styles.searchIconText, { color: theme.text }]}>🔍</Text>
+        <View style={[styles.header, { backgroundColor: isSelectionMode ? theme.surface : theme.background, borderBottomColor: theme.border }]}>
+          {isSelectionMode ? (
+            <>
+              <TouchableOpacity onPress={() => setSelectedMessages([])} style={styles.backTouch}>
+                <X size={24} color={theme.text} />
               </TouchableOpacity>
-            )}
+              <View style={styles.headerInfo}>
+                <Text style={[styles.headerName, { color: theme.text }]}>{selectedMessages.length} Selected</Text>
+              </View>
+              <View style={styles.headerActions}>
+                {selectedMessages.length === 1 && messages.find(m => m.id === selectedMessages[0])?.sender === 'me' && (
+                  <TouchableOpacity style={styles.iconButton} onPress={handleEditSelected}>
+                    <Edit2 size={22} color={theme.text} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.iconButton} onPress={handleDeleteSelected}>
+                  <Trash2 size={22} color={theme.error || 'red'} />
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backTouch}>
+                <ArrowLeft size={24} color={theme.text} />
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
-              <Text style={[styles.iconText, { color: theme.text }]}>⋮</Text>
-            </TouchableOpacity>
-          </View>
+              {isSearchVisible ? (
+                <TextInput
+                  style={[styles.searchInput, { color: theme.text }]}
+                  placeholder="Search in chat..."
+                  placeholderTextColor={theme.textSecondary}
+                  value={searchText}
+                  onChangeText={setSearchText}
+                  autoFocus
+                  onBlur={() => !searchText && setIsSearchVisible(false)}
+                />
+              ) : (
+                <View style={styles.headerInfo}>
+                  <Text style={[styles.headerName, { color: theme.text }]}>{name}</Text>
+                  <Text style={styles.headerStatus}>Online</Text>
+                </View>
+              )}
+
+              <View style={styles.headerActions}>
+                {!isSearchVisible && (
+                  <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
+                    <Search size={22} color={theme.text} />
+                  </TouchableOpacity>
+                )}
+
+                <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
+                  <MoreVertical size={22} color={theme.text} />
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+          {/* End of Conditional Header Content */}
         </View>
 
         <PinchGestureHandler onGestureEvent={onPinchEvent}>
@@ -246,6 +498,7 @@ export default function ChatScreen() {
               data={messages}
               keyExtractor={(item) => item.id}
               renderItem={renderMessage}
+              extraData={selectedMessages}
               style={styles.messagesList}
               contentContainerStyle={styles.messagesContainer}
               showsVerticalScrollIndicator={false}
@@ -260,8 +513,25 @@ export default function ChatScreen() {
           { backgroundColor: theme.background, borderTopColor: theme.border },
           Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }
         ]}>
-          <TouchableOpacity style={styles.attachButton}>
-            <Text style={[styles.attachButtonText, { color: theme.textSecondary }]}>+</Text>
+          {editingMessage && (
+            <View style={[styles.editingBanner, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
+              <View style={styles.editingContent}>
+                <Text style={[styles.editingTitle, { color: theme.primary }]}>Editing Message</Text>
+                <Text style={[styles.editingText, { color: theme.textSecondary }]} numberOfLines={1}>
+                  {editingMessage.text}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={handleCancelEdit} style={styles.cancelButton}>
+                <Text style={[styles.cancelButtonText, { color: theme.text }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <TouchableOpacity
+            style={styles.attachButton}
+            onPress={handleSelectImage}
+          >
+            <Paperclip size={22} color={theme.textSecondary} />
           </TouchableOpacity>
 
           <View style={[styles.textInputContainer, { backgroundColor: theme.inputBg }]}>
@@ -279,23 +549,21 @@ export default function ChatScreen() {
             />
           </View>
 
-          <TouchableOpacity
+          <ScalePressable
             onPress={sendMessage}
             disabled={sending || !input.trim()}
-            activeOpacity={0.8}
           >
-            <Animated.View
+            <View
               style={[
                 styles.sendButton,
                 input.trim() && !sending ? [styles.sendButtonActive, { backgroundColor: theme.primary }] : [styles.sendButtonInactive, { backgroundColor: theme.mode === 'dark' ? '#3e4042' : '#dadce0' }],
-                { transform: [{ scale: buttonScale }] }
               ]}
             >
               <Text style={[styles.sendButtonText, input.trim() && !sending ? styles.sendButtonTextActive : styles.sendButtonTextInactive]}>
-                {sending ? '⏳' : '➤'}
+                {sending ? '⏳' : (editingMessage ? '✓' : '➤')}
               </Text>
-            </Animated.View>
-          </TouchableOpacity>
+            </View>
+          </ScalePressable>
         </View>
 
         {/* Profile Overflow Menu */}
@@ -320,6 +588,36 @@ export default function ChatScreen() {
               </View>
             </View>
           </TouchableWithoutFeedback>
+        </Modal>
+
+        {/* Image Preview Modal */}
+        <Modal
+          visible={isPreviewVisible}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setIsPreviewVisible(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
+            <Image
+              source={{ uri: selectedImage?.uri }}
+              style={{ width: '90%', height: '70%', borderRadius: 12 }}
+              resizeMode="contain"
+            />
+            <View style={{ flexDirection: 'row', marginTop: 24, gap: 20 }}>
+              <TouchableOpacity
+                onPress={() => setIsPreviewVisible(false)}
+                style={{ backgroundColor: '#FF4444', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSendImage}
+                style={{ backgroundColor: theme.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+              >
+                <Text style={{ color: 'white', fontWeight: 'bold' }}>Send Image</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </Modal>
 
       </KeyboardAvoidingView>
@@ -568,5 +866,41 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
     fontWeight: '500',
+  },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 4,
+  },
+  editingBanner: {
+    position: 'absolute',
+    top: -60,
+    left: 0,
+    right: 0,
+    height: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    zIndex: 10,
+  },
+  editingContent: {
+    flex: 1,
+  },
+  editingTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  editingText: {
+    fontSize: 14,
+  },
+  cancelButton: {
+    padding: 8,
+  },
+  cancelButtonText: {
+    fontSize: 18,
+    fontWeight: '600',
   },
 });

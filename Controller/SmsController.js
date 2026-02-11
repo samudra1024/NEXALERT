@@ -3,7 +3,7 @@ import { PermissionsAndroid, Platform, NativeModules } from 'react-native';
 const { SmsModule } = NativeModules;
 
 class SmsController {
-  
+
   // Request all SMS permissions
   static async requestAllSmsPermissions() {
     if (Platform.OS === 'android') {
@@ -14,14 +14,14 @@ class SmsController {
           PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
           PermissionsAndroid.PERMISSIONS.RECEIVE_MMS,
         ];
-        
+
         // Add notification permission for Android 13+
         if (Platform.Version >= 33) {
           permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
         }
-        
+
         const granted = await PermissionsAndroid.requestMultiple(permissions);
-        
+
         return Object.values(granted).every(
           permission => permission === PermissionsAndroid.RESULTS.GRANTED
         );
@@ -53,7 +53,7 @@ class SmsController {
       throw error;
     }
   }
-  
+
   // Send SMS
   static async sendSms(phoneNumber, message) {
     try {
@@ -61,7 +61,7 @@ class SmsController {
       if (!hasPermission) {
         throw new Error('SMS permissions denied');
       }
-      
+
       await SmsModule.sendSms(phoneNumber, message);
       return true;
     } catch (error) {
@@ -69,7 +69,7 @@ class SmsController {
       throw error;
     }
   }
-  
+
   // Mark messages as read
   static async markAsRead(address) {
     try {
@@ -80,7 +80,7 @@ class SmsController {
       throw error;
     }
   }
-  
+
   // Get unread count
   static async getUnreadCount() {
     try {
@@ -91,7 +91,7 @@ class SmsController {
       return 0;
     }
   }
-  
+
   // Check if app is default SMS app
   static async isDefaultSmsApp() {
     try {
@@ -102,7 +102,7 @@ class SmsController {
       return false;
     }
   }
-  
+
   // Check if we should show default SMS prompt
   static async shouldShowDefaultPrompt() {
     try {
@@ -113,13 +113,13 @@ class SmsController {
       return true; // Show prompt on error to be safe
     }
   }
-  
+
   // Request to become default SMS app (proper order: role first, then permissions)
   static async requestDefaultSmsApp() {
     try {
       // First request ROLE_SMS (modern approach for Android 11+)
       await SmsModule.requestDefaultSmsApp();
-      
+
       // Then request runtime permissions after role is granted
       setTimeout(async () => {
         try {
@@ -128,14 +128,14 @@ class SmsController {
           console.warn('Runtime permissions request failed:', permError);
         }
       }, 1000);
-      
+
       return true;
     } catch (error) {
       console.error('Error requesting default SMS app:', error);
       throw error;
     }
   }
-  
+
   // Open SMS app settings
   static async openSmsAppSettings() {
     try {
@@ -146,7 +146,17 @@ class SmsController {
       throw error;
     }
   }
-  
+
+  // Delete SMS messages
+  static async deleteSms(ids) {
+    try {
+      const count = await SmsModule.deleteSms(ids);
+      return count;
+    } catch (error) {
+      console.error('Error deleting SMS:', error);
+      throw error;
+    }
+  }
 
 }
 

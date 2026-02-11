@@ -15,6 +15,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import axios from "axios";
 import { BaseURL } from '../config/API';
+import { useTheme } from '../context/ThemeContext';
 
 import OTP_ILLUSTRATION from '../assets/images/OTP.png'; // Ensure this path is correct
 
@@ -23,6 +24,7 @@ export default function OtpVerification() {
   const [loading, setLoading] = useState(false);
   const [error, seterror] = useState(false);
   const navigation = useNavigation();
+  const { theme } = useTheme();
 
   const handleGetOtp = async () => {
     setLoading(true);
@@ -33,7 +35,7 @@ export default function OtpVerification() {
       setLoading(false);
       return;
     }
-    
+
     console.log(mobileNumber)
     // Simulate API call to send OTP
     // IMPORTANT: Ensure you set BaseURL in config/API.js to your computer's local IP, not 'localhost'.
@@ -41,12 +43,12 @@ export default function OtpVerification() {
     // Use imported BaseURL and add diagnostics
     console.log('Sending OTP to:', `${BaseURL}/send-otp`);
     //navigation.navigate('EnterOtp'); // Navigate to InfoOne screen
-    try{
+    try {
       const res = await axios.post(`${BaseURL}/send-otp`, { phoneNumber: `+91${mobileNumber}` });
 
       console.log('Response from OTP API:', res.data.success);
 
-    
+
       if (res.data.success) {
         console.log('OTP sent successfully!')
         Alert.alert('OTP sent successfully!');
@@ -85,9 +87,9 @@ export default function OtpVerification() {
             We will send you a one Time Password on this mobile number
           </Text>
           <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>Mobile number</Text>
+            <Text style={[styles.inputLabel, { color: theme.primary }]}>Mobile number</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, { borderColor: theme.primary }]}
               placeholder="1234567891"
               placeholderTextColor="#B5B5B5"
               keyboardType="phone-pad"
@@ -96,16 +98,16 @@ export default function OtpVerification() {
             />
           </View>
           {loading ? (
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color={theme.primary} />
           ) : (
-            <TouchableOpacity style={styles.button} onPress={handleGetOtp}>
+            <TouchableOpacity style={[styles.button, { backgroundColor: theme.primary }]} onPress={handleGetOtp}>
               <Text style={styles.buttonText}>Get OTP</Text>
             </TouchableOpacity>
           )}
           <View style={styles.footerText}>
             <Text style={styles.footerNormalText}>Don't have an account? </Text>
             <TouchableOpacity onPress={() => Alert.alert('Sign Up pressed!')}>
-              <Text style={styles.footerLinkText}>Sign Up</Text>
+              <Text style={[styles.footerLinkText, { color: theme.primary }]}>Sign Up</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -164,7 +166,7 @@ const styles = StyleSheet.create({
   input: {
     width: '100%',
     height: 50,
-    borderColor: '#2F80ED',
+    borderColor: '#2563eb',
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 16,
@@ -173,7 +175,7 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '100%',
-    backgroundColor: '#2F80ED',
+    backgroundColor: '#2563eb',
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',

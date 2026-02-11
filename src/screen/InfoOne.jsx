@@ -9,13 +9,15 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img1.png'); // Ensure this path is correct
 
 const InfoOne = () => {
 
-    const navigation = useNavigation();
+  const navigation = useNavigation();
+  const { theme } = useTheme();
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -23,23 +25,23 @@ const InfoOne = () => {
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
       </View>
-      
+
       <View style={styles.content}>
         <Image
           // Use require for local images.
-          source={shieldLockIcon} 
+          source={shieldLockIcon}
           style={styles.image}
         />
         <Text style={styles.title}>Your Shield Against SMS Scams!</Text>
         <View style={styles.paginationContainer}>
-          <View style={[styles.dot, styles.activeDot]} />
+          <View style={[styles.dot, styles.activeDot, { backgroundColor: theme.primary }]} />
           <View style={[styles.dot, styles.inactiveDot]} />
           <View style={[styles.dot, styles.inactiveDot]} />
         </View>
       </View>
 
       <TouchableOpacity
-        style={styles.nextButton}
+        style={[styles.nextButton, { backgroundColor: theme.primary }]}
         onPress={() => navigation.navigate('InfoTwo')}>
         <Text style={styles.nextButtonText}>Next</Text>
       </TouchableOpacity>

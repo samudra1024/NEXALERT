@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
   refreshButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2563eb',
     padding: 12,
     borderRadius: 8,
     marginBottom: 16,
