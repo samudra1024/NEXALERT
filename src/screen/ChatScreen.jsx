@@ -22,7 +22,6 @@ import {
   TouchableWithoutFeedback
 } from 'react-native-gesture-handler';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import SmsController from '../../Controller/SmsController';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
@@ -399,6 +398,7 @@ export default function ChatScreen() {
               ]}>
                 {item.text}
               </Text>
+              <Text>
               {item.imageUri && (
                 <Image
                   source={{ uri: item.imageUri }}
@@ -416,6 +416,7 @@ export default function ChatScreen() {
                   {item.time}
                   {item.isEdited && <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text>}
                 </Text>
+              </View>
               </Text>
               {selectedMessages.includes(item.id) && <Check size={14} color={theme.text} style={{ marginLeft: 8 }} />}
             </View>
