@@ -30,13 +30,13 @@ export const darkTheme = {
     text: '#e4e6eb',
     textSecondary: '#b0b3b8',
     border: '#393a3b',
-    primary: '#4e8cff', // Slightly lighter blue for dark mode
+    primary: '#2563eb', // Consistent blue for dark mode
     onPrimary: '#ffffff',
     danger: '#ff4d4d',
     statusBar: 'light-content',
     statusBg: '#18191a',
     inputBg: '#3a3b3c',
-    chatMyBubble: '#4e8cff',
+    chatMyBubble: '#2563eb',
     chatOtherBubble: '#3e4042',
     chatMyText: '#ffffff',
     chatOtherText: '#e4e6eb',

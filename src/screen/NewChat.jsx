@@ -9,10 +9,12 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../context/ThemeContext';
 
 export default function NewChat() {
   const navigation = useNavigation();
   const [phoneNumber, setPhoneNumber] = useState('');
+  const { theme } = useTheme();
 
   const startChat = () => {
     if (phoneNumber.trim().length > 0) {
@@ -27,9 +29,9 @@ export default function NewChat() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#2563eb" />
-      
-      <View style={styles.header}>
+      <StatusBar barStyle="light-content" backgroundColor={theme.primary} />
+
+      <View style={[styles.header, { backgroundColor: theme.primary }]}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Text style={styles.backButton}>←</Text>
         </TouchableOpacity>
@@ -46,9 +48,9 @@ export default function NewChat() {
           placeholderTextColor="#adb5bd"
           keyboardType="phone-pad"
         />
-        
+
         <TouchableOpacity
-          style={[styles.startButton, phoneNumber.trim() ? styles.startButtonActive : null]}
+          style={[styles.startButton, phoneNumber.trim() ? [styles.startButtonActive, { backgroundColor: theme.primary }] : null]}
           onPress={startChat}
           disabled={!phoneNumber.trim()}
         >

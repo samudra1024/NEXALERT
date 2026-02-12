@@ -12,6 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
+import ScalePressable from '../components/animations/ScalePressable';
 
 const { width } = Dimensions.get('window');
 
@@ -28,6 +29,7 @@ export default function YourProfile() {
     const navigation = useNavigation();
     const [profileImage, setProfileImage] = useState(AVATARS[0]);
     const [clickCount, setClickCount] = useState(0);
+    const [showTerms, setShowTerms] = useState(false);
 
     const handleCameraPress = () => {
         Alert.alert(
@@ -64,9 +66,9 @@ export default function YourProfile() {
 
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <ScalePressable onPress={() => navigation.goBack()} style={styles.backButton}>
                     <Text style={[styles.backButtonText, { color: theme.text }]}>←</Text>
-                </TouchableOpacity>
+                </ScalePressable>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
                 <View style={{ width: 40 }} />
             </View>
@@ -122,6 +124,53 @@ export default function YourProfile() {
                     <View style={[styles.infoItem, { backgroundColor: theme.surface }]}>
                         <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone Number</Text>
                         <Text style={[styles.infoValue, { color: theme.text }]}>+1 234 567 8900</Text>
+                    </View>
+                </Animated.View>
+
+                {/* About Section */}
+                <Animated.View
+                    entering={FadeInDown.delay(800).duration(800).springify()}
+                    style={styles.aboutContainer}
+                >
+                    <Text style={[styles.sectionTitle, { color: theme.text }]}>About App</Text>
+                    <View style={[styles.aboutCard, { backgroundColor: theme.surface }]}>
+                        <Text style={[styles.appName, { color: theme.primary }]}>NEXALERT</Text>
+                        <Text style={[styles.appTagline, { color: theme.textSecondary }]}>Your Shield Against SMS Scams</Text>
+
+                        <Text style={[styles.appDescription, { color: theme.text }]}>
+                            NEXALERT protects you from fraudulent SMS messages while providing a reliable messaging experience.
+                        </Text>
+
+                        <TouchableOpacity onPress={() => setShowTerms(!showTerms)} style={{ marginBottom: 16 }}>
+                            <Text style={{ color: theme.primary, fontWeight: '600' }}>
+                                {showTerms ? "Hide Terms & Conditions" : "Read Terms & Conditions"}
+                            </Text>
+                        </TouchableOpacity>
+
+                        {showTerms && (
+                            <Animated.View entering={FadeInDown.duration(300)} style={{ marginBottom: 16 }}>
+                                <Text style={{ color: theme.text, fontSize: 13, lineHeight: 18 }}>
+                                    1. <Text style={{ fontWeight: 'bold' }}>Usage:</Text> Use this app responsibly.{'\n'}
+                                    2. <Text style={{ fontWeight: 'bold' }}>Privacy:</Text> Your messages are processed locally.{'\n'}
+                                    3. <Text style={{ fontWeight: 'bold' }}>Liability:</Text> We are not liable for lost data.
+                                </Text>
+                            </Animated.View>
+                        )}
+
+                        <View style={styles.valueItem}>
+                            <Text style={[styles.valueTitle, { color: theme.text }]}>⚡ Speed & Security</Text>
+                            <Text style={[styles.valueDesc, { color: theme.textSecondary }]}>Real-time analysis without compromising speed.</Text>
+                        </View>
+
+                        <View style={styles.valueItem}>
+                            <Text style={[styles.valueTitle, { color: theme.text }]}>🔒 Privacy First</Text>
+                            <Text style={[styles.valueDesc, { color: theme.textSecondary }]}>Your data stays on your device.</Text>
+                        </View>
+
+                        <View style={styles.valueItem}>
+                            <Text style={[styles.valueTitle, { color: theme.text }]}>✨ Simplicity</Text>
+                            <Text style={[styles.valueDesc, { color: theme.textSecondary }]}>A clean, distraction-free interface.</Text>
+                        </View>
                     </View>
                 </Animated.View>
 
@@ -226,5 +275,49 @@ const styles = StyleSheet.create({
     infoValue: {
         fontSize: 18,
         fontWeight: '500',
+    },
+    aboutContainer: {
+        width: '100%',
+        marginTop: 24,
+        marginBottom: 40,
+    },
+    sectionTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+        marginBottom: 12,
+        paddingHorizontal: 4,
+    },
+    aboutCard: {
+        padding: 20,
+        borderRadius: 20,
+    },
+    appName: {
+        fontSize: 18,
+        fontWeight: '800',
+        marginBottom: 4,
+        letterSpacing: 1,
+    },
+    appTagline: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginBottom: 16,
+        fontStyle: 'italic',
+    },
+    appDescription: {
+        fontSize: 14,
+        lineHeight: 22,
+        marginBottom: 20,
+    },
+    valueItem: {
+        marginBottom: 16,
+    },
+    valueTitle: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 4,
+    },
+    valueDesc: {
+        fontSize: 13,
+        lineHeight: 18,
     },
 });

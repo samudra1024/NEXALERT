@@ -9,6 +9,7 @@ import {
     ScrollView // Added ScrollView
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import Animated, { ZoomIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
 
 export default function AdvancedSettings() {
@@ -65,15 +66,18 @@ export default function AdvancedSettings() {
                 />
             </View>
 
-            {/* Detail Modal */}
+            {/* Detail Modal with Animation */}
             <Modal
-                animationType="slide"
                 transparent={true}
                 visible={modalVisible}
                 onRequestClose={() => setModalVisible(false)}
             >
                 <View style={styles.centeredView}>
-                    <View style={[styles.modalView, { backgroundColor: theme.surface }]}>
+                    <Animated.View
+                        entering={ZoomIn.duration(300).springify()}
+                        exiting={FadeOut.duration(200)}
+                        style={[styles.modalView, { backgroundColor: theme.surface }]}
+                    >
                         <Text style={[styles.modalTitle, { color: theme.text }]}>{modalContent.title}</Text>
                         <ScrollView style={{ marginBottom: 20 }}>
                             <Text style={[styles.modalText, { color: theme.textSecondary }]}>{modalContent.body}</Text>
@@ -84,7 +88,7 @@ export default function AdvancedSettings() {
                         >
                             <Text style={[styles.closeButtonText, { color: theme.onPrimary }]}>Close</Text>
                         </TouchableOpacity>
-                    </View>
+                    </Animated.View>
                 </View>
             </Modal>
         </View>
