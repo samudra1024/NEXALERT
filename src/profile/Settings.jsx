@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -6,16 +6,26 @@ import {
     TouchableOpacity,
     Switch,
     StatusBar,
-    ScrollView
+    ScrollView,
+    Modal,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import Animated, { ZoomIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
+import { ArrowLeft, ChevronRight, HelpCircle, Info, FileText, Shield } from 'lucide-react-native';
 
 export default function Settings() {
     const { theme } = useTheme();
     const { settings, updateSettings } = useSettings();
     const navigation = useNavigation();
+    const [modalVisible, setModalVisible] = useState(false);
+    const [modalContent, setModalContent] = useState({ title: '', body: '' });
+
+    const showModal = (title, body) => {
+        setModalContent({ title, body });
+        setModalVisible(true);
+    };
 
     const SettingToggle = ({ label, value, onToggle }) => (
         <View style={[styles.settingRow, { backgroundColor: theme.surface }]}>
@@ -29,6 +39,19 @@ export default function Settings() {
         </View>
     );
 
+    const SettingLink = ({ label, icon, onPress, color }) => (
+        <TouchableOpacity
+            style={[styles.settingRow, { backgroundColor: theme.surface }]}
+            onPress={onPress}
+        >
+            <View style={styles.linkContent}>
+                {icon}
+                <Text style={[styles.settingLabel, { color: color || theme.text, marginLeft: icon ? 12 : 0 }]}>{label}</Text>
+            </View>
+            <ChevronRight size={20} color={theme.textSecondary} />
+        </TouchableOpacity>
+    );
+
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
             <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
@@ -36,7 +59,7 @@ export default function Settings() {
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Text style={[styles.backButtonText, { color: theme.text }]}>←</Text>
+                    <ArrowLeft size={24} color={theme.text} />
                 </TouchableOpacity>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>Settings</Text>
                 <View style={{ width: 40 }} />
@@ -70,19 +93,74 @@ export default function Settings() {
                     />
                 </View>
 
-                {/* Advanced Section */}
-                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Advanced</Text>
+                {/* About & Legal Section (moved from AdvancedSettings) */}
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>About & Legal</Text>
                 <View style={styles.sectionContainer}>
-                    <TouchableOpacity
-                        style={[styles.settingRow, { backgroundColor: theme.surface }]}
-                        onPress={() => navigation.navigate('AdvancedSettings')}
-                    >
-                        <Text style={[styles.settingLabel, { color: theme.text }]}>Advanced Settings</Text>
-                        <Text style={[styles.chevron, { color: theme.textSecondary }]}>›</Text>
-                    </TouchableOpacity>
+                    <SettingLink
+                        label="About App"
+                        icon={<Info size={20} color={theme.primary} />}
+                        onPress={() => showModal(
+                            "About NEXALERT",
+                            "NEXALERT v1.0.0\n\nA secure and efficient messaging application designed to keep you connected.\n\n⚡ Speed & Security\nReal-time analysis without compromising speed.\n\n🔒 Privacy First\nYour data stays on your device.\n\n✨ Simplicity\nA clean, distraction-free interface."
+                        )}
+                    />
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <SettingLink
+                        label="Terms & Conditions"
+                        icon={<FileText size={20} color={theme.primary} />}
+                        onPress={() => showModal(
+                            "Terms & Conditions",
+                            "1. User Conduct: behave responsibly.\n2. Privacy: we respect your data.\n3. Usage: for personal communication only.\n\n(Full terms would go here...)"
+                        )}
+                    />
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <SettingLink
+                        label="Privacy Policy"
+                        icon={<Shield size={20} color={theme.primary} />}
+                        onPress={() => showModal(
+                            "Privacy Policy",
+                            "We collect minimal data to provide this service. Your messages are stored locally or securely transmitted. We do not sell your data."
+                        )}
+                    />
+                </View>
+
+                {/* Help & Feedback Section (moved from YourProfile menu) */}
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Support</Text>
+                <View style={styles.sectionContainer}>
+                    <SettingLink
+                        label="Help & Feedback"
+                        icon={<HelpCircle size={20} color={theme.primary} />}
+                        onPress={() => navigation.navigate('HelpandFeedback')}
+                    />
                 </View>
 
             </ScrollView>
+
+            {/* Detail Modal */}
+            <Modal
+                transparent={true}
+                visible={modalVisible}
+                onRequestClose={() => setModalVisible(false)}
+            >
+                <View style={styles.centeredView}>
+                    <Animated.View
+                        entering={ZoomIn.duration(300).springify()}
+                        exiting={FadeOut.duration(200)}
+                        style={[styles.modalView, { backgroundColor: theme.surface }]}
+                    >
+                        <Text style={[styles.modalTitle, { color: theme.text }]}>{modalContent.title}</Text>
+                        <ScrollView style={{ marginBottom: 20 }}>
+                            <Text style={[styles.modalText, { color: theme.textSecondary }]}>{modalContent.body}</Text>
+                        </ScrollView>
+                        <TouchableOpacity
+                            style={[styles.closeButton, { backgroundColor: theme.primary }]}
+                            onPress={() => setModalVisible(false)}
+                        >
+                            <Text style={[styles.closeButtonText, { color: theme.onPrimary || '#fff' }]}>Close</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                </View>
+            </Modal>
         </View>
     );
 }
@@ -103,16 +181,13 @@ const styles = StyleSheet.create({
         padding: 8,
         marginLeft: -8,
     },
-    backButtonText: {
-        fontSize: 24,
-        fontWeight: '300',
-    },
     headerTitle: {
         fontSize: 18,
         fontWeight: '600',
     },
     content: {
         padding: 20,
+        paddingBottom: 40,
     },
     sectionTitle: {
         fontSize: 14,
@@ -137,12 +212,56 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: '500',
     },
+    linkContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
     divider: {
         height: 1,
         marginLeft: 16,
     },
-    chevron: {
-        fontSize: 24,
-        fontWeight: '300',
+
+    // Modal Styles
+    centeredView: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    modalView: {
+        margin: 20,
+        borderRadius: 20,
+        padding: 35,
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
+        width: '85%',
+        maxHeight: '70%',
+    },
+    modalTitle: {
+        marginBottom: 15,
+        textAlign: 'center',
+        fontSize: 20,
+        fontWeight: 'bold',
+    },
+    modalText: {
+        marginBottom: 15,
+        textAlign: 'left',
+        fontSize: 16,
+        lineHeight: 24,
+    },
+    closeButton: {
+        borderRadius: 20,
+        padding: 10,
+        elevation: 2,
+        minWidth: 100,
+        alignItems: 'center',
+    },
+    closeButtonText: {
+        fontWeight: 'bold',
+        textAlign: 'center',
     },
 });

@@ -9,7 +9,7 @@ class SmsController {
   static async requestAllSmsPermissions() {
     if (Platform.OS === 'android') {
       try {
-        const permissions = [
+        const smsPermissions = [
           PermissionsAndroid.PERMISSIONS.READ_SMS,
           PermissionsAndroid.PERMISSIONS.SEND_SMS,
           PermissionsAndroid.PERMISSIONS.RECEIVE_SMS,
@@ -18,14 +18,20 @@ class SmsController {
 
         // Add notification permission for Android 13+
         if (Platform.Version >= 33) {
-          permissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
+          smsPermissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
         }
 
-        const granted = await PermissionsAndroid.requestMultiple(permissions);
+        // Also request contacts permission (non-blocking for SMS)
+        const allPermissions = [...smsPermissions, PermissionsAndroid.PERMISSIONS.READ_CONTACTS];
 
-        return Object.values(granted).every(
-          permission => permission === PermissionsAndroid.RESULTS.GRANTED
+        const granted = await PermissionsAndroid.requestMultiple(allPermissions);
+
+        // Only check SMS permissions — contacts is optional
+        const smsGranted = smsPermissions.every(
+          p => granted[p] === PermissionsAndroid.RESULTS.GRANTED
         );
+
+        return smsGranted;
       } catch (err) {
         console.warn('Permission error:', err);
         return false;
@@ -253,6 +259,91 @@ class SmsController {
     }
   }
 
+  // --- ARCHIVE FEATURES ---
+
+  static ARCHIVE_KEY = 'archived_sms_ids';
+
+  // Get archived conversation IDs
+  static async getArchivedMessageIds() {
+    try {
+      const json = await AsyncStorage.getItem(this.ARCHIVE_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch (e) {
+      console.error("Error getting archived IDs", e);
+      return [];
+    }
+  }
+
+  // Archive a conversation
+  static async archiveConversation(address) {
+    try {
+      const archived = await this.getArchivedMessageIds();
+      if (!archived.includes(address)) {
+        archived.push(address);
+        await AsyncStorage.setItem(this.ARCHIVE_KEY, JSON.stringify(archived));
+      }
+      return true;
+    } catch (e) {
+      console.error("Error archiving conversation", e);
+      return false;
+    }
+  }
+
+  // Unarchive a conversation
+  static async unarchiveConversation(address) {
+    try {
+      let archived = await this.getArchivedMessageIds();
+      archived = archived.filter(id => id !== address);
+      await AsyncStorage.setItem(this.ARCHIVE_KEY, JSON.stringify(archived));
+      return true;
+    } catch (e) {
+      console.error("Error unarchiving conversation", e);
+      return false;
+    }
+  }
+
+  // Get ONLY archived conversations
+  static async getArchivedConversations() {
+    try {
+      const messages = await this.fetchSmsMessages();
+      const archivedIds = await this.getArchivedMessageIds();
+
+      if (archivedIds.length === 0) return [];
+
+      const conversationsMap = {};
+      messages.sort((a, b) => b.date - a.date);
+
+      messages.forEach(msg => {
+        const address = msg.address;
+        if (!archivedIds.includes(address)) return;
+
+        if (!conversationsMap[address]) {
+          conversationsMap[address] = {
+            id: address,
+            name: address,
+            avatar: address[0] || '?',
+            avatarColor: this.getAvatarColor(address),
+            lastMessage: msg.body,
+            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            date: new Date(msg.date).toLocaleDateString(),
+            rawTime: msg.date,
+            unread: 0,
+          };
+        }
+        if (msg.read === 0 && msg.type === 1) {
+          conversationsMap[address].unread++;
+        }
+      });
+
+      const sorted = Object.values(conversationsMap);
+      sorted.sort((a, b) => b.rawTime - a.rawTime);
+      return await this.resolveContactNames(sorted);
+    } catch (error) {
+      console.error('Error getting archived conversations:', error);
+      return [];
+    }
+  }
+
   // --- RECYCLE BIN FEATURES ---
 
   static RECYCLE_BIN_KEY = 'recycled_sms_ids';
@@ -333,11 +424,37 @@ class SmsController {
     }
   }
 
+  // Resolve phone numbers to contact names using native ContactsContract
+  static async resolveContactNames(conversations) {
+    try {
+      const phoneNumbers = conversations.map(c => c.id);
+      if (phoneNumbers.length === 0) return conversations;
+
+      const contactNameMap = await SmsModule.getContactNames(phoneNumbers);
+
+      return conversations.map(conv => {
+        const savedName = contactNameMap[conv.id];
+        if (savedName) {
+          return {
+            ...conv,
+            name: savedName,
+            avatar: savedName.charAt(0).toUpperCase(),
+          };
+        }
+        return conv;
+      });
+    } catch (error) {
+      console.warn('Contact name resolution failed, using numbers:', error);
+      return conversations; // Fallback to phone numbers
+    }
+  }
+
   // Get conversations but EXCLUDE recycled ones
   static async getConversations(page = 1, limit = 20) {
     try {
       const messages = await this.fetchSmsMessages();
       const recycledIds = await this.getRecycledMessageIds();
+      const archivedIds = await this.getArchivedMessageIds();
 
       // Group by address
       const conversationsMap = {};
@@ -348,8 +465,9 @@ class SmsController {
       messages.forEach(msg => {
         const address = msg.address;
 
-        // SKIP if this conversation is recycled
+        // SKIP if this conversation is recycled or archived
         if (recycledIds.includes(address)) return;
+        if (archivedIds.includes(address)) return;
 
         if (!conversationsMap[address]) {
           conversationsMap[address] = {
@@ -381,7 +499,7 @@ class SmsController {
       const paginatedConversations = sortedConversations.slice(startIndex, endIndex);
 
       return {
-        conversations: paginatedConversations,
+        conversations: await this.resolveContactNames(paginatedConversations),
         hasMore: endIndex < sortedConversations.length,
         page: page
       };

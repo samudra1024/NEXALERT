@@ -28,7 +28,7 @@ import SlideInList from '../components/animations/SlideInList';
 import FadeInView from '../components/animations/FadeInView';
 import { Swipeable } from 'react-native-gesture-handler';
 // Lucide Icons
-import { Search, RotateCcw, User, MoreVertical, Plus, Sun, Moon, LogOut, Settings, HelpCircle, Archive, CheckSquare, Edit, Trash2 } from 'lucide-react-native';
+import { Search, RotateCcw, User, MoreVertical, Plus, Sun, Moon, LogOut, Settings, Archive, CheckSquare, Edit, Trash2 } from 'lucide-react-native';
 
 const getAvatarColor = (address) => {
   const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
@@ -251,7 +251,7 @@ export default function ChatsList() {
 
     return (
       <TouchableOpacity
-        style={[styles.archiveAction, { backgroundColor: '#ef4444' }]} // Red for Delete
+        style={[styles.swipeAction, { backgroundColor: '#ef4444' }]}
         onPress={() => {
           Alert.alert(
             "Move to Recycle Bin?",
@@ -263,7 +263,6 @@ export default function ChatsList() {
                 style: "destructive",
                 onPress: async () => {
                   await SmsController.recycleConversation(item.id);
-                  // Remove from local list immediately
                   setContacts(prev => prev.filter(c => c.id !== item.id));
                 }
               }
@@ -271,15 +270,40 @@ export default function ChatsList() {
           );
         }}
       >
-        <Animated.View style={{ transform: [{ scale }] }}>
-          <Trash2 size={28} color="#FFF" />
+        <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+          <Trash2 size={24} color="#FFF" />
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderLeftActions = (progress, dragX, item) => {
+    const scale = dragX.interpolate({
+      inputRange: [0, 100],
+      outputRange: [0, 1],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <TouchableOpacity
+        style={[styles.swipeAction, { backgroundColor: '#1a73e8' }]}
+        onPress={async () => {
+          await SmsController.archiveConversation(item.id);
+          setContacts(prev => prev.filter(c => c.id !== item.id));
+        }}
+      >
+        <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+          <Archive size={24} color="#FFF" />
         </Animated.View>
       </TouchableOpacity>
     );
   };
 
   const renderItem = ({ item }) => (
-    <Swipeable renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}>
+    <Swipeable
+      renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}
+      renderLeftActions={(progress, dragX) => renderLeftActions(progress, dragX, item)}
+    >
       <ScalePressable
         style={[styles.chatItem, { backgroundColor: theme.background }]}
         onPress={() => {
@@ -466,19 +490,6 @@ export default function ChatsList() {
                   <Settings size={18} color={theme.text} />
                 </View>
                 <Text style={[styles.menuText, { color: theme.text }]}>Settings</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setIsProfileMenuVisible(false);
-                  navigation.navigate('HelpandFeedback');
-                }}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <HelpCircle size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Help & Feedback</Text>
               </TouchableOpacity>
 
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -828,6 +839,11 @@ const styles = StyleSheet.create({
   },
 
   // Swipe Actions
+  swipeAction: {
+    width: 70,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   archiveAction: {
     width: 60,
     height: 60,

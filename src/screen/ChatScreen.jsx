@@ -110,10 +110,16 @@ export default function ChatScreen() {
 
       const processMessages = (msgs) => msgs.map(m => ({
         ...m,
-        starred: starredIds.includes(m.id)
+        id: m._id || m.id,
+        text: m.body || m.text,
+        sender: parseInt(m.type) === 2 ? 'me' : 'other',
+        time: new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        starred: starredIds.includes(m._id || m.id)
       }));
 
       const processedNew = processMessages(result.messages);
+      // Sort ascending (oldest first) for non-inverted FlatList
+      processedNew.sort((a, b) => a.date - b.date);
 
       if (nextPage === 1) {
         setMessages(processedNew);

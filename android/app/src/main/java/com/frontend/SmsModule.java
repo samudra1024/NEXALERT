@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.Telephony;
+import android.provider.ContactsContract;
 import android.telephony.SmsManager;
 import android.app.role.RoleManager;
 import android.os.Build;
@@ -260,6 +261,45 @@ public class SmsModule extends ReactContextBaseJavaModule {
             promise.resolve(deletedCount);
         } catch (Exception e) {
             promise.reject("DELETE_ERROR", e.getMessage());
+        }
+    }
+    @ReactMethod
+    public void getContactNames(ReadableArray phoneNumbers, Promise promise) {
+        try {
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            WritableMap contactMap = Arguments.createMap();
+
+            for (int i = 0; i < phoneNumbers.size(); i++) {
+                String phoneNumber = phoneNumbers.getString(i);
+                if (phoneNumber == null || phoneNumber.isEmpty()) continue;
+
+                Uri lookupUri = Uri.withAppendedPath(
+                    ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                    Uri.encode(phoneNumber)
+                );
+
+                Cursor cursor = contentResolver.query(
+                    lookupUri,
+                    new String[]{ ContactsContract.PhoneLookup.DISPLAY_NAME },
+                    null, null, null
+                );
+
+                if (cursor != null) {
+                    if (cursor.moveToFirst()) {
+                        String name = cursor.getString(
+                            cursor.getColumnIndexOrThrow(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                        );
+                        if (name != null && !name.isEmpty()) {
+                            contactMap.putString(phoneNumber, name);
+                        }
+                    }
+                    cursor.close();
+                }
+            }
+
+            promise.resolve(contactMap);
+        } catch (Exception e) {
+            promise.reject("CONTACT_LOOKUP_ERROR", e.getMessage());
         }
     }
 }
