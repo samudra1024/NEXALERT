@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,8 +8,8 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { useTheme } from '../context/ThemeContext';
+import { useNavigation } from '@react-navigation/native';
+import { useTheme } from "../context/ThemeContext";
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img3.png');
@@ -17,6 +17,8 @@ const shieldLockIcon = require('../assets/images/img3.png');
 const InfoThree = () => {
   const navigation = useNavigation();
   const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
   return (
     <SafeAreaView style={styles.container}>
       {/* The Skip button has been removed */}
@@ -25,18 +27,18 @@ const InfoThree = () => {
         <Image
           // Use require for local images.
           source={shieldLockIcon}
-          style={styles.image}
+          style={[styles.image, { tintColor: theme.colors.text }]}
         />
         <Text style={styles.title}>Precision Filtering with Smart Analysis!</Text>
         <View style={styles.paginationContainer}>
           <View style={[styles.dot, styles.inactiveDot]} />
           <View style={[styles.dot, styles.inactiveDot]} />
-          <View style={[styles.dot, styles.activeDot, { backgroundColor: theme.primary }]} />
+          <View style={[styles.dot, styles.activeDot]} />
         </View>
       </View>
 
       <TouchableOpacity
-        style={[styles.getStartedButton, { backgroundColor: theme.primary }]}
+        style={styles.getStartedButton}
         onPress={() => navigation.navigate('OtpVerification')}>
         <Text style={styles.getStartedButtonText}>Get Started</Text>
       </TouchableOpacity>
@@ -44,10 +46,10 @@ const InfoThree = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A1E3C', // Dark blue background color
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -58,7 +60,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: 18,
-    color: '#FFFFFF',
+    color: theme.colors.text,
     fontWeight: 'bold',
   },
   content: {
@@ -72,13 +74,12 @@ const styles = StyleSheet.create({
     width: 150,
     height: 150,
     resizeMode: 'contain',
-    tintColor: '#FFFFFF',
     marginBottom: 30,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 40, // Space between title and dots
   },
@@ -94,15 +95,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   activeDot: {
-    backgroundColor: '#007AFF', // Blue color for the active dot
+    backgroundColor: theme.colors.primary,
   },
   inactiveDot: {
-    backgroundColor: '#F5F5DC', // Beige color for inactive dots
+    backgroundColor: theme.colors.border,
   },
   getStartedButton: {
     width: '80%',
     paddingVertical: 15,
-    backgroundColor: '#007AFF', // A shade of blue for the button
+    backgroundColor: theme.colors.primary,
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',

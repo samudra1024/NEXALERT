@@ -3,6 +3,9 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { ThemeProvider } from './src/context/ThemeContext';
+import { SettingsProvider } from './src/context/SettingsContext';
+
 import OtpVerification from './src/screen/OtpVerification';
 import EnterOtp from './src/screen/EnterOtp';
 import InfoOne from './src/screen/InfoOne';
@@ -15,12 +18,10 @@ import YourProfile from './src/profile/YourProfile';
 import Archived from './src/profile/Archived';
 import Settings from './src/profile/Settings';
 import AdvancedSettings from './src/profile/AdvancedSettings';
-import { SettingsProvider } from './src/context/SettingsContext';
+import ContactUs from './src/screen/ContactUs';
 
 
 const Stack = createStackNavigator();
-
-import { ThemeProvider } from './src/context/ThemeContext';
 
 export default function App() {
   return (
@@ -62,6 +63,7 @@ export default function App() {
               <Stack.Screen name="Archived" component={Archived} />
               <Stack.Screen name="Settings" component={Settings} />
               <Stack.Screen name="AdvancedSettings" component={AdvancedSettings} />
+              <Stack.Screen name="ContactUs" component={ContactUs} />
             </Stack.Navigator>
           </NavigationContainer>
         </ThemeProvider>

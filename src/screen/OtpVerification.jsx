@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,7 +15,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import axios from "axios";
 import { BaseURL } from '../config/API';
-import { useTheme } from '../context/ThemeContext';
+import { useTheme } from "../context/ThemeContext";
 
 import OTP_ILLUSTRATION from '../assets/images/OTP.png'; // Ensure this path is correct
 
@@ -25,6 +25,7 @@ export default function OtpVerification() {
   const [error, seterror] = useState(false);
   const navigation = useNavigation();
   const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
   const handleGetOtp = async () => {
     setLoading(true);
@@ -87,27 +88,27 @@ export default function OtpVerification() {
             We will send you a one Time Password on this mobile number
           </Text>
           <View style={styles.inputContainer}>
-            <Text style={[styles.inputLabel, { color: theme.primary }]}>Mobile number</Text>
+            <Text style={styles.inputLabel}>Mobile number</Text>
             <TextInput
-              style={[styles.input, { borderColor: theme.primary }]}
+              style={styles.input}
               placeholder="1234567891"
-              placeholderTextColor="#B5B5B5"
+              placeholderTextColor={theme.colors.placeholder}
               keyboardType="phone-pad"
               value={mobileNumber}
               onChangeText={setMobileNumber}
             />
           </View>
           {loading ? (
-            <ActivityIndicator size="large" color={theme.primary} />
+            <ActivityIndicator size="large" color={theme.colors.primary} />
           ) : (
-            <TouchableOpacity style={[styles.button, { backgroundColor: theme.primary }]} onPress={handleGetOtp}>
+            <TouchableOpacity style={styles.button} onPress={handleGetOtp}>
               <Text style={styles.buttonText}>Get OTP</Text>
             </TouchableOpacity>
           )}
           <View style={styles.footerText}>
             <Text style={styles.footerNormalText}>Don't have an account? </Text>
             <TouchableOpacity onPress={() => Alert.alert('Sign Up pressed!')}>
-              <Text style={[styles.footerLinkText, { color: theme.primary }]}>Sign Up</Text>
+              <Text style={styles.footerLinkText}>Sign Up</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -116,10 +117,10 @@ export default function OtpVerification() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: theme.colors.background,
   },
   safeArea: {
     flex: 1,
@@ -140,12 +141,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
+    color: theme.colors.text,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#828282',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: 40,
   },
@@ -157,25 +158,26 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     left: 12,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: theme.colors.background, // Match container bg to hide line
     paddingHorizontal: 4,
     fontSize: 14,
-    color: '#2F80ED',
+    color: theme.colors.primary,
     zIndex: 1,
   },
   input: {
     width: '100%',
     height: 50,
-    borderColor: '#2563eb',
+    borderColor: theme.colors.primary,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: 'black',
+    color: theme.colors.inputText,
+    backgroundColor: theme.colors.inputBackground,
   },
   button: {
     width: '100%',
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
@@ -191,11 +193,11 @@ const styles = StyleSheet.create({
   },
   footerNormalText: {
     fontSize: 14,
-    color: '#828282',
+    color: theme.colors.textSecondary,
   },
   footerLinkText: {
     fontSize: 14,
-    color: '#2F80ED',
+    color: theme.colors.primary,
     fontWeight: '600',
   },
 });

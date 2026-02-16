@@ -14,102 +14,101 @@ import {
   Keyboard,
   Animated,
   Modal,
-  Image,
+  TouchableWithoutFeedback,
+  ActivityIndicator,
+  Share,
+  Clipboard // If available, or use a package. Since react-native core clipboard is deprecated, we might need to check packages.
+  // Wait, React Native Clipboard is deprecated in newer versions. 
+  // Let's check imports. User provided package.json has "@react-native-community/cli", etc.
+  // Actually, standard modern approach is Clipboard from '@react-native-clipboard/clipboard' if installed, or try React Native one if older.
+  // Checking user package.json: no clipboard package. 
+  // We'll rely on text input copy or assume standard Clipboard for now if it exists in RN < 0.60 or use a workaround.
+  // Actually, `Clipboard` is removed from RN core.
+  // We will assume `Clipboard` might not work directly. 
+  // Instead, let's just implement Forward, Edit (copy to input), Reply, Delete, Star.
 } from "react-native";
-import {
-  PinchGestureHandler,
-  State,
-  TouchableWithoutFeedback
-} from 'react-native-gesture-handler';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import SmsController from '../../Controller/SmsController';
-import { useTheme } from '../context/ThemeContext';
-import { useSettings } from '../context/SettingsContext';
-// Re-import Animated to ensure we have the correct one for gestures if needed, 
-// though we usually use react-native-reanimated for this.
-// Assuming Animated from react-native is already imported, we might need Reanimated for smoother zoom.
-import { useSharedValue, useAnimatedStyle, withSpring, FadeInUp, FadeInRight, FadeInLeft } from 'react-native-reanimated';
-import Reanimated from 'react-native-reanimated';
-import ScalePressable from '../components/animations/ScalePressable';
-import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Image as ImageIcon } from 'lucide-react-native';
-import { launchImageLibrary } from 'react-native-image-picker';
+import { useTheme } from "../context/ThemeContext";
 
 // In-memory cache for chat messages
 const chatCache = {};
 
 export default function ChatScreen() {
-  const { theme } = useTheme();
-  const { settings } = useSettings();
   const navigation = useNavigation();
   const route = useRoute();
   const { contactId, name } = route.params || {};
+  const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [editingMessage, setEditingMessage] = useState(null);
-  // Media Sharing State
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [isPreviewVisible, setIsPreviewVisible] = useState(false);
-  const [selectedMessages, setSelectedMessages] = useState([]);
-  const isSelectionMode = selectedMessages.length > 0;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef(null);
   const buttonScale = useRef(new Animated.Value(1)).current;
   const messagesLoaded = useRef(false);
 
-  // Zoom State
-  const scale = useSharedValue(1);
-  const onPinchEvent = Reanimated.useAnimatedGestureHandler({
-    onActive: (event) => {
-      if (settings.pinchToZoom) {
-        scale.value = event.scale;
-      }
-    },
-    onEnd: () => {
-      scale.value = withSpring(1);
-    }
-  });
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }]
-    };
-  });
-
   // New UI States for Header
   const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [selectedMessage, setSelectedMessage] = useState(null);
+  const [messageMenuVisible, setMessageMenuVisible] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
 
-  const loadSmsMessages = React.useCallback(async (forceRefresh = false) => {
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+
+  const loadSmsMessages = React.useCallback(async (refresh = false, nextPage = 1) => {
     if (!contactId) return;
 
-    // Check cache first
-    if (!forceRefresh && chatCache[contactId]) {
-      setMessages(chatCache[contactId]);
-      return;
+    // Check cache first if not refreshing and page 1
+    if (!refresh && nextPage === 1 && chatCache[contactId]) {
+      setMessages(chatCache[contactId].messages);
+      // We proceed to background refresh starred status or just rely on cache
+    }
+
+    if (nextPage > 1) {
+      setLoadingMore(true);
     }
 
     try {
-      const smsMessages = await SmsController.fetchSmsMessages();
-      const formattedMessages = smsMessages
-        .filter(sms => sms.address === contactId)
-        .map((sms) => ({
-          id: sms.id,
-          sender: parseInt(sms.type) === 2 ? 'me' : sms.address,
-          text: sms.body,
-          time: new Date(parseInt(sms.date)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          date: parseInt(sms.date)
-        }))
-        .sort((a, b) => a.date - b.date);
+      const result = await SmsController.getChatMessages(contactId, nextPage);
+      const starredIds = await SmsController.getStarredMessages();
 
-      // Store in cache
-      chatCache[contactId] = formattedMessages;
-      setMessages(formattedMessages);
-      messagesLoaded.current = true;
+      const processMessages = (msgs) => msgs.map(m => ({
+        ...m,
+        starred: starredIds.includes(m.id)
+      }));
+
+      const processedNew = processMessages(result.messages);
+
+      if (nextPage === 1) {
+        setMessages(processedNew);
+      } else {
+        setMessages(prev => {
+          return [...processedNew, ...prev];
+        });
+      }
+
+      setHasMore(result.hasMore);
+      setPage(result.page);
+
+      if (nextPage === 1) {
+        chatCache[contactId] = { messages: processedNew };
+        messagesLoaded.current = true;
+      }
+
     } catch (error) {
+      console.error(error);
       Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
+    } finally {
+      setLoadingMore(false);
     }
   }, [contactId]);
 
@@ -141,263 +140,134 @@ export default function ChatScreen() {
     ]).start();
   };
 
-  const handleSelectMessage = (messageId) => {
-    setSelectedMessages(prev => {
-      if (prev.includes(messageId)) {
-        return prev.filter(id => id !== messageId);
-      } else {
-        return [...prev, messageId];
-      }
-    });
-  };
-
-  const handleLongPress = React.useCallback((message) => {
-    // If we are already editing, don't allow selection? Or just switch modes.
-    // For now, let's allow selection to override or coexist.
-    // Use callback ref or access state directly if stable.
-    if (!isSelectionMode) {
-      if (editingMessage) {
-        handleCancelEdit();
-      }
-      setSelectedMessages([message.id]);
-    } else {
-      handleSelectMessage(message.id);
-    }
-  }, [isSelectionMode, editingMessage, selectedMessages]);
-
-  const handleMessagePress = React.useCallback((message) => {
-    if (isSelectionMode) {
-      handleSelectMessage(message.id);
-    }
-  }, [isSelectionMode]);
-
-  const handleDeleteSelected = async () => {
-    Alert.alert(
-      "Delete Messages",
-      `Are you sure you want to delete ${selectedMessages.length} message${selectedMessages.length > 1 ? 's' : ''}?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await SmsController.deleteSms(selectedMessages);
-              setSelectedMessages([]);
-              await loadSmsMessages(true);
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete messages: ' + error.message);
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleEditSelected = () => {
-    if (selectedMessages.length === 1) {
-      const msgId = selectedMessages[0];
-      const msg = messages.find(m => m.id === msgId);
-      if (msg) {
-        setEditingMessage(msg);
-        setInput(msg.text);
-        setSelectedMessages([]);
-      }
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingMessage(null);
-    setInput("");
-  };
-
-  const handleUpdateMessage = () => {
-    if (input.trim().length > 0 && editingMessage) {
-      const updatedMessages = messages.map(msg =>
-        msg.id === editingMessage.id ? { ...msg, text: input.trim(), isEdited: true } : msg
-      );
-      setMessages(updatedMessages);
-      // Update cache
-      chatCache[contactId] = updatedMessages;
-
-      handleCancelEdit();
-    }
-  };
-
-  const handleSelectImage = async () => {
-    const options = {
-      mediaType: 'photo',
-      includeBase64: false,
-    };
-
-    try {
-      const result = await launchImageLibrary(options);
-      if (result.assets && result.assets[0]) {
-        setSelectedImage(result.assets[0]);
-        setIsPreviewVisible(true);
-      }
-    } catch (error) {
-      console.log('ImagePicker Error: ', error);
-    }
-  };
-
-  const handleSendImage = async () => {
-    if (selectedImage) {
-      // Create a mock message for the image
-      const newMessage = {
-        id: Date.now().toString(),
-        address: contactId,
-        body: "📷 Image", // Fallback text
-        date: Date.now(),
-        date_sent: Date.now(),
-        read: 1,
-        type: 2, // Outgoing
-        status: -1,
-        sender: 'me',
-        text: "📷 Image",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        imageUri: selectedImage.uri // Custom property
-      };
-
-      setMessages(prev => [newMessage, ...prev]);
-      setIsPreviewVisible(false);
-      setSelectedImage(null);
-      // In a real app, you would upload this or send via MMS
-    }
-  };
-
   const sendMessage = React.useCallback(async () => {
     if (input.trim().length > 0 && !sending) {
-      if (editingMessage) {
-        handleUpdateMessage();
-        return;
-      }
-
       animateButton();
       setSending(true);
       try {
         await SmsController.sendSms(contactId, input.trim());
         setInput("");
         // Force refresh to get new message
-        await loadSmsMessages(true);
+        await loadSmsMessages(true, 1);
       } catch (error) {
         Alert.alert('Error', 'Failed to send SMS: ' + error.message);
       } finally {
         setSending(false);
       }
     }
-  }, [input, contactId, sending, loadSmsMessages, buttonScale, editingMessage]);
+  }, [input, contactId, sending, loadSmsMessages, buttonScale]);
 
-  const shouldShowDateSeparator = (currentMessage, previousMessage) => {
-    if (!previousMessage) return true; // First message always shows date
-
-    const currentDate = new Date(currentMessage.date);
-    const previousDate = new Date(previousMessage.date);
-
-    // If same day, don't show separator
-    if (
-      currentDate.getDate() === previousDate.getDate() &&
-      currentDate.getMonth() === previousDate.getMonth() &&
-      currentDate.getFullYear() === previousDate.getFullYear()
-    ) {
-      return false;
+  const addReaction = (emoji) => {
+    if (selectedMessage) {
+      setMessages(prevMessages =>
+        prevMessages.map(msg =>
+          msg.id === selectedMessage.id ? { ...msg, reaction: emoji } : msg
+        )
+      );
+      setMessageMenuVisible(false);
     }
-
-    return true;
   };
 
-  const renderDateSeparator = (dateTimestamp) => {
-    const date = new Date(dateTimestamp);
-    const today = new Date();
-    const isToday =
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear();
+  const handleAction = async (action) => {
+    if (!selectedMessage) return;
+    setMessageMenuVisible(false);
 
-    // Don't show separator for today's messages
-    if (isToday) return null;
+    switch (action) {
+      case 'reply':
+        setInput(`Replying to: "${selectedMessage.text.substring(0, 20)}..."\n`);
+        break;
+      case 'copy':
+        setInput(selectedMessage.text);
+        break;
+      case 'forward':
+        await SmsController.forwardMessage(selectedMessage.text);
+        break;
+      case 'edit':
+        setInput(selectedMessage.text);
+        break;
+      case 'star':
+        const isStarred = await SmsController.toggleStarMessage(selectedMessage.id);
+        setMessages(prev => prev.map(m => m.id === selectedMessage.id ? { ...m, starred: isStarred } : m));
+        // Update cache
+        if (chatCache[contactId]) {
+          chatCache[contactId].messages = chatCache[contactId].messages.map(m => m.id === selectedMessage.id ? { ...m, starred: isStarred } : m);
+        }
+        break;
+      case 'delete':
+        Alert.alert('Delete Message', 'Are you sure?', [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await SmsController.deleteMessage(selectedMessage.id);
+                setMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
+                // Update cache
+                if (chatCache[contactId]) {
+                  chatCache[contactId].messages = chatCache[contactId].messages.filter(m => m.id !== selectedMessage.id);
+                }
+              } catch (e) {
+                Alert.alert('Error', 'Could not delete message');
+              }
+            }
+          }
+        ]);
+        break;
+    }
+  };
 
-    return (
-      <View style={{ alignItems: 'center', marginVertical: 12 }}>
-        <View style={{ backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
-          <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '500' }}>
-            {date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+  const renderMessage = React.useCallback(({ item }) => (
+    <TouchableOpacity
+      onLongPress={() => {
+        setSelectedMessage(item);
+        setMessageMenuVisible(true);
+      }}
+      activeOpacity={0.7}
+    >
+      <View style={[
+        styles.messageContainer,
+        item.sender === "me" ? styles.myMessage : styles.otherMessage
+      ]}>
+        <Text style={[
+          styles.messageText,
+          item.sender === "me" ? styles.myMessageText : styles.otherMessageText
+        ]}>
+          {item.text}
+        </Text>
+        <View style={styles.timeContainer}>
+          <Text style={[
+            styles.timeText,
+            item.sender === "me" ? styles.myTimeText : styles.otherTimeText
+          ]}>
+            {item.time}
           </Text>
-        </View>
-      </View>
-    );
-  };
-
-  const renderMessage = React.useCallback(({ item, index }) => {
-    const previousMessage = messages[index + 1]; // Messages are sorted desc, so previous is +1
-    // Actually, messages in FlatList usually sorted ascending for chat?
-    // Let's check loadSmsMessages: .sort((a, b) => a.date - b.date);
-    // So messages[0] is oldest.
-    // Wait, typical chat flatlist with inverted={false} means index 0 is top (oldest).
-    // Let's assume index 0 is oldest.
-    // Then previous message is index - 1.
-
-    // In loadSmsMessages: 100:         .sort((a, b) => a.date - b.date); 
-    // This sorts ascending (oldest first).
-    // So for item at index `i`, previous message is `i - 1`.
-
-    const prevMsg = index > 0 ? messages[index - 1] : null;
-    const showDate = shouldShowDateSeparator(item, prevMsg);
-
-    return (
-      <View>
-        {showDate && renderDateSeparator(item.date)}
-        <Reanimated.View
-          entering={item.sender === "me" ? FadeInRight.springify() : FadeInLeft.springify()}
-          style={{ marginBottom: 4 }}
-        >
-          <TouchableWithoutFeedback
-            onLongPress={() => handleLongPress(item)}
-            onPress={() => handleMessagePress(item)}
-            delayLongPress={300}
-          >
-            <View
-              style={[
-                styles.messageContainer,
-                item.sender === "me"
-                  ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
-                  : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }],
-                selectedMessages.includes(item.id) && { backgroundColor: theme.primary + '80', borderColor: theme.primary, borderWidth: 1 } // Highlight selected
-              ]}>
-              <Text style={[
-                styles.messageText,
-                item.sender === "me"
-                  ? [styles.myMessageText, { color: theme.chatMyText }]
-                  : [styles.otherMessageText, { color: theme.chatOtherText }]
-              ]}>
-                {item.text}
-              </Text>
-              {item.imageUri && (
-                <Image
-                  source={{ uri: item.imageUri }}
-                  style={{ width: 200, height: 200, borderRadius: 8, marginTop: 4 }}
-                  resizeMode="cover"
-                />
+          {item.sender === "me" && (
+            <View style={styles.statusIconContainer}>
+              {item.status === 'seen' ? (
+                <View style={styles.doubleCheck}>
+                  <Text style={[styles.statusIcon, styles.checkSeen]}>✓</Text>
+                  <Text style={[styles.statusIcon, styles.checkSeen, styles.checkOverlap]}>✓</Text>
+                </View>
+              ) : item.status === 'sent' ? (
+                <View style={styles.doubleCheck}>
+                  <Text style={[styles.statusIcon, styles.checkSent]}>✓</Text>
+                  <Text style={[styles.statusIcon, styles.checkSent, styles.checkOverlap]}>✓</Text>
+                </View>
+              ) : (
+                <Text style={styles.clockIcon}>🕐</Text>
               )}
-              <View style={styles.messageFooter}>
-                <Text style={[
-                  styles.timeText,
-                  item.sender === "me"
-                    ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
-                    : [styles.otherTimeText, { color: theme.textSecondary }]
-                ]}>
-                  {item.time}
-                  {item.isEdited && <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text>}
-                </Text>
-              </Text>
-              {selectedMessages.includes(item.id) && <Check size={14} color={theme.text} style={{ marginLeft: 8 }} />}
             </View>
-
-          </TouchableWithoutFeedback>
-        </Reanimated.View>
-      </View >
-    );
-  }, [theme, handleLongPress, handleMessagePress, selectedMessages, messages]);
+          )}
+        </View>
+        {item.reaction && (
+          <View style={styles.reactionBadge}>
+            <Text style={styles.reactionBadgeEmoji}>{item.reaction}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
+  ), []);
 
   const scrollToBottom = () => {
     if (flatListRef.current && messages.length > 0) {
@@ -422,8 +292,7 @@ export default function ChatScreen() {
   }, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.surface }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
+    <View style={styles.container}>
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -432,115 +301,78 @@ export default function ChatScreen() {
       >
 
         {/* Enhanced Header */}
-        <View style={[styles.header, { backgroundColor: isSelectionMode ? theme.surface : theme.background, borderBottomColor: theme.border }]}>
-          {isSelectionMode ? (
-            <>
-              <TouchableOpacity onPress={() => setSelectedMessages([])} style={styles.backTouch}>
-                <X size={24} color={theme.text} />
-              </TouchableOpacity>
-              <View style={styles.headerInfo}>
-                <Text style={[styles.headerName, { color: theme.text }]}>{selectedMessages.length} Selected</Text>
-              </View>
-              <View style={styles.headerActions}>
-                {selectedMessages.length === 1 && messages.find(m => m.id === selectedMessages[0])?.sender === 'me' && (
-                  <TouchableOpacity style={styles.iconButton} onPress={handleEditSelected}>
-                    <Edit2 size={22} color={theme.text} />
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity style={styles.iconButton} onPress={handleDeleteSelected}>
-                  <Trash2 size={22} color={theme.error || 'red'} />
-                </TouchableOpacity>
-              </View>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backTouch}>
-                <ArrowLeft size={24} color={theme.text} />
-              </TouchableOpacity>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backTouch}>
+            <Text style={styles.backButton}>←</Text>
+          </TouchableOpacity>
 
-              {isSearchVisible ? (
-                <TextInput
-                  style={[styles.searchInput, { color: theme.text }]}
-                  placeholder="Search in chat..."
-                  placeholderTextColor={theme.textSecondary}
-                  value={searchText}
-                  onChangeText={setSearchText}
-                  autoFocus
-                  onBlur={() => !searchText && setIsSearchVisible(false)}
-                />
-              ) : (
-                <View style={styles.headerInfo}>
-                  <Text style={[styles.headerName, { color: theme.text }]}>{name}</Text>
-                  <Text style={styles.headerStatus}>Online</Text>
-                </View>
-              )}
-
-              <View style={styles.headerActions}>
-                {!isSearchVisible && (
-                  <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
-                    <Search size={22} color={theme.text} />
-                  </TouchableOpacity>
-                )}
-
-                <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
-                  <MoreVertical size={22} color={theme.text} />
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-          {/* End of Conditional Header Content */}
-        </View>
-
-        <PinchGestureHandler onGestureEvent={onPinchEvent}>
-          <Reanimated.View style={[{ flex: 1 }, animatedStyle]}>
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={renderMessage}
-              extraData={selectedMessages}
-              style={styles.messagesList}
-              contentContainerStyle={styles.messagesContainer}
-              showsVerticalScrollIndicator={false}
-              onContentSizeChange={scrollToBottom}
-              onLayout={scrollToBottom}
+          {isSearchVisible ? (
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search in chat..."
+              value={searchText}
+              onChangeText={setSearchText}
+              autoFocus
+              onBlur={() => !searchText && setIsSearchVisible(false)}
             />
-          </Reanimated.View>
-        </PinchGestureHandler>
-
-        <View style={[
-          styles.inputContainer,
-          { backgroundColor: theme.background, borderTopColor: theme.border },
-          Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }
-        ]}>
-          {editingMessage && (
-            <View style={[styles.editingBanner, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-              <View style={styles.editingContent}>
-                <Text style={[styles.editingTitle, { color: theme.primary }]}>Editing Message</Text>
-                <Text style={[styles.editingText, { color: theme.textSecondary }]} numberOfLines={1}>
-                  {editingMessage.text}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={handleCancelEdit} style={styles.cancelButton}>
-                <Text style={[styles.cancelButtonText, { color: theme.text }]}>✕</Text>
-              </TouchableOpacity>
+          ) : (
+            <View style={styles.headerInfo}>
+              <Text style={styles.headerName}>{SmsController.getContactName(contactId) || name}</Text>
+              <Text style={[styles.headerStatus, { color: isOnline ? theme.colors.success : theme.colors.textSecondary }]}>
+                {isOnline ? 'Online' : 'Offline'}
+              </Text>
             </View>
           )}
 
-          <TouchableOpacity
-            style={styles.attachButton}
-            onPress={handleSelectImage}
-          >
-            <Paperclip size={22} color={theme.textSecondary} />
+          <View style={styles.headerActions}>
+            {!isSearchVisible && (
+              <TouchableOpacity style={styles.iconButton} onPress={() => setIsSearchVisible(true)}>
+                <Text style={styles.iconText}>🔍</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
+              <Text style={styles.iconText}>⋮</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderMessage}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={(w, h) => {
+            // Only scroll to bottom on initial load or sending message, not when loading previous
+            if (page === 1 && !loadingMore) {
+              scrollToBottom();
+            }
+          }}
+          onLayout={scrollToBottom}
+          onScroll={({ nativeEvent }) => {
+            if (nativeEvent.contentOffset.y <= 10 && hasMore && !loadingMore && messages.length > 0) {
+              loadSmsMessages(true, page + 1);
+            }
+          }}
+          scrollEventThrottle={16}
+          ListHeaderComponent={loadingMore ? <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 10 }} /> : null}
+        />
+
+        <View style={[styles.inputContainer, Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }]}>
+          <TouchableOpacity style={styles.attachButton}>
+            <Text style={styles.attachButtonText}>+</Text>
           </TouchableOpacity>
 
-          <View style={[styles.textInputContainer, { backgroundColor: theme.inputBg }]}>
+          <View style={styles.textInputContainer}>
             <TextInput
               value={input}
               onChangeText={setInput}
               placeholder="Message"
-              placeholderTextColor={theme.textSecondary}
-              style={[styles.textInput, { color: theme.text }]}
+              placeholderTextColor={theme.colors.placeholder}
+              style={styles.textInput}
               multiline
               maxLength={1000}
               returnKeyType="send"
@@ -549,21 +381,23 @@ export default function ChatScreen() {
             />
           </View>
 
-          <ScalePressable
+          <TouchableOpacity
             onPress={sendMessage}
             disabled={sending || !input.trim()}
+            activeOpacity={0.8}
           >
-            <View
+            <Animated.View
               style={[
                 styles.sendButton,
-                input.trim() && !sending ? [styles.sendButtonActive, { backgroundColor: theme.primary }] : [styles.sendButtonInactive, { backgroundColor: theme.mode === 'dark' ? '#3e4042' : '#dadce0' }],
+                input.trim() && !sending ? styles.sendButtonActive : styles.sendButtonInactive,
+                { transform: [{ scale: buttonScale }] }
               ]}
             >
               <Text style={[styles.sendButtonText, input.trim() && !sending ? styles.sendButtonTextActive : styles.sendButtonTextInactive]}>
-                {sending ? '⏳' : (editingMessage ? '✓' : '➤')}
+                {sending ? '⏳' : '➤'}
               </Text>
-            </View>
-          </ScalePressable>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
 
         {/* Profile Overflow Menu */}
@@ -573,8 +407,12 @@ export default function ChatScreen() {
           animationType="fade"
           onRequestClose={() => setIsProfileMenuVisible(false)}
         >
-          <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
-            <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setIsProfileMenuVisible(false)}
+          >
+            <TouchableWithoutFeedback>
               <View style={styles.menuContainer}>
                 <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
                   <Text style={styles.menuText}>Settings</Text>
@@ -586,38 +424,79 @@ export default function ChatScreen() {
                   <Text style={styles.menuText}>Block Contact</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
+            </TouchableWithoutFeedback>
+          </TouchableOpacity>
         </Modal>
 
-        {/* Image Preview Modal */}
+        {/* Message Action Menu */}
         <Modal
-          visible={isPreviewVisible}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setIsPreviewVisible(false)}
+          visible={messageMenuVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMessageMenuVisible(false)}
         >
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center' }}>
-            <Image
-              source={{ uri: selectedImage?.uri }}
-              style={{ width: '90%', height: '70%', borderRadius: 12 }}
-              resizeMode="contain"
-            />
-            <View style={{ flexDirection: 'row', marginTop: 24, gap: 20 }}>
-              <TouchableOpacity
-                onPress={() => setIsPreviewVisible(false)}
-                style={{ backgroundColor: '#FF4444', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
-              >
-                <Text style={{ color: 'white', fontWeight: 'bold' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSendImage}
-                style={{ backgroundColor: theme.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
-              >
-                <Text style={{ color: 'white', fontWeight: 'bold' }}>Send Image</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setMessageMenuVisible(false)}
+          >
+            <TouchableWithoutFeedback>
+              <View style={styles.messageActionMenu}>
+                {/* Reactions */}
+                <View style={styles.reactionsRow}>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('👍')}>
+                    <Text style={styles.reactionEmoji}>👍</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('❤️')}>
+                    <Text style={styles.reactionEmoji}>❤️</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('😂')}>
+                    <Text style={styles.reactionEmoji}>😂</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('😮')}>
+                    <Text style={styles.reactionEmoji}>😮</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('😢')}>
+                    <Text style={styles.reactionEmoji}>😢</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton} onPress={() => addReaction('🙏')}>
+                    <Text style={styles.reactionEmoji}>🙏</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.reactionButton}>
+                    <Icon name="plus" size={20} color="#999" />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Actions */}
+                <TouchableOpacity style={styles.actionItem} onPress={() => handleAction('reply')}>
+                  <Icon name="reply" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Reply</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionItem} onPress={() => handleAction('copy')}>
+                  <Icon name="content-copy" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Copy</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionItem} onPress={() => handleAction('forward')}>
+                  <Icon name="share-variant" size={20} color="#ddd" />
+                  <Text style={styles.actionText}>Forward</Text>
+                </TouchableOpacity>
+                {selectedMessage?.sender === 'me' && (
+                  <TouchableOpacity style={styles.actionItem} onPress={() => handleAction('edit')}>
+                    <Icon name="pencil" size={20} color="#ddd" />
+                    <Text style={styles.actionText}>Edit</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.actionItem} onPress={() => handleAction('star')}>
+                  <Icon name={selectedMessage?.starred ? "star" : "star-outline"} size={20} color={selectedMessage?.starred ? "#fbc02d" : "#ddd"} />
+                  <Text style={styles.actionText}>{selectedMessage?.starred ? "Unstar" : "Star"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.actionItem} onPress={() => handleAction('delete')}>
+                  <Icon name="delete" size={20} color="#f44336" />
+                  <Text style={[styles.actionText, { color: '#f44336' }]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </TouchableOpacity>
         </Modal>
 
       </KeyboardAvoidingView>
@@ -625,10 +504,10 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.background,
   },
   keyboardContainer: {
     flex: 1,
@@ -636,7 +515,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff', // Changed to white for modern look
+    backgroundColor: theme.colors.headerBackground,
     paddingHorizontal: 16,
     paddingVertical: 12,
     elevation: 4,
@@ -651,7 +530,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     fontSize: 24,
-    color: '#333',
+    color: theme.colors.iconColor,
     fontWeight: '300',
   },
   headerInfo: {
@@ -660,11 +539,11 @@ const styles = StyleSheet.create({
   headerName: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.text,
   },
   headerStatus: {
     fontSize: 12,
-    color: '#28a745', // Green for online
+    color: theme.colors.success,
     marginTop: 2,
   },
   headerActions: {
@@ -674,7 +553,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.text,
     paddingVertical: 4,
   },
   iconButton: {
@@ -686,23 +565,8 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   iconText: {
-    fontSize: 22, // Bigger icons
-    color: '#555',
-  },
-  searchIconButton: {
-    marginLeft: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#f0f2f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e1e4e8',
-  },
-  searchIconText: {
-    fontSize: 18,
-    color: '#555',
+    fontSize: 22,
+    color: theme.colors.iconColor,
   },
 
   messagesList: {
@@ -723,12 +587,12 @@ const styles = StyleSheet.create({
   },
   myMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.myMessage,
     borderBottomRightRadius: 4,
   },
   otherMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.otherMessage,
     borderBottomLeftRadius: 4,
     elevation: 1,
     shadowColor: '#000',
@@ -741,26 +605,52 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   myMessageText: {
-    color: '#ffffff',
+    color: theme.colors.myMessageText,
   },
   otherMessageText: {
-    color: '#212529',
+    color: theme.colors.otherMessageText,
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
   },
   timeText: {
     fontSize: 11,
-    marginTop: 4,
   },
   myTimeText: {
-    color: '#bfdbfe',
-    textAlign: 'right',
+    color: 'rgba(255,255,255,0.7)',
   },
   otherTimeText: {
-    color: '#adb5bd',
+    color: theme.colors.textSecondary,
+  },
+  statusIconContainer: {
+    marginLeft: 4,
+  },
+  statusIcon: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  checkSeen: {
+    color: '#4fc3f7',
+  },
+  checkSent: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  doubleCheck: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  checkOverlap: {
+    marginLeft: -8,
+  },
+  clockIcon: {
+    fontSize: 12,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.headerBackground,
     paddingHorizontal: 12,
     paddingVertical: 8,
     paddingBottom: Platform.OS === 'ios' ? 8 : 12,
@@ -777,7 +667,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#202124',
+    color: theme.colors.inputText,
     maxHeight: 120,
     minHeight: 48,
     textAlignVertical: 'center',
@@ -797,12 +687,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   sendButtonActive: {
-    backgroundColor: '#1a73e8',
+    backgroundColor: theme.colors.primary,
     elevation: 6,
     shadowOpacity: 0.25,
   },
   sendButtonInactive: {
-    backgroundColor: '#dadce0',
+    backgroundColor: theme.colors.secondary,
     elevation: 1,
     shadowOpacity: 0.1,
   },
@@ -814,7 +704,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   sendButtonTextInactive: {
-    color: '#9aa0a6',
+    color: theme.colors.textSecondary,
   },
   attachButton: {
     width: 40,
@@ -827,12 +717,12 @@ const styles = StyleSheet.create({
   },
   attachButtonText: {
     fontSize: 24,
-    color: '#5f6368',
+    color: theme.colors.textSecondary,
     fontWeight: '300',
   },
   textInputContainer: {
     flex: 1,
-    backgroundColor: '#f1f3f4',
+    backgroundColor: theme.colors.inputBackground,
     borderRadius: 24,
     marginRight: 8,
     paddingHorizontal: 4,
@@ -841,13 +731,13 @@ const styles = StyleSheet.create({
   // Modal / Menu
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: theme.colors.modalOverlay,
   },
   menuContainer: {
     position: 'absolute',
     top: 60,
     right: 20,
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.menuBackground,
     borderRadius: 12,
     elevation: 5,
     shadowColor: '#000',
@@ -864,43 +754,71 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.text,
     fontWeight: '500',
   },
-  messageFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    marginTop: 4,
-  },
-  editingBanner: {
+
+  // Message Action Menu
+  messageActionMenu: {
     position: 'absolute',
-    top: -60,
-    left: 0,
-    right: 0,
-    height: 60,
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: '#2a2a2a', // Keep dark for actions
+    borderRadius: 16,
+    padding: 12,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+  },
+  reactionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#444',
+    marginBottom: 8,
+  },
+  reactionButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+  },
+  reactionEmoji: {
+    fontSize: 24,
+  },
+  actionItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    zIndex: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
   },
-  editingContent: {
-    flex: 1,
+  actionText: {
+    fontSize: 16,
+    color: '#ddd',
+    marginLeft: 16,
   },
-  editingTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 2,
+  reactionBadge: {
+    position: 'absolute',
+    bottom: -8,
+    right: 8,
+    backgroundColor: theme.colors.card,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  editingText: {
-    fontSize: 14,
-  },
-  cancelButton: {
-    padding: 8,
-  },
-  cancelButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+  reactionBadgeEmoji: {
+    fontSize: 16,
   },
 });

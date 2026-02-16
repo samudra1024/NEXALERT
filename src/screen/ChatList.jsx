@@ -7,25 +7,20 @@ import {
   TouchableOpacity,
   Alert,
   StyleSheet,
-  StatusBar,
   PermissionsAndroid,
   Platform,
   ScrollView,
   Modal,
   TouchableWithoutFeedback,
-  TextInput
+  TextInput,
+  ActivityIndicator,
+  Image
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 import DefaultSmsPrompt from './DefaultSmsPrompt';
-import { useTheme } from '../context/ThemeContext';
-import { Switch } from 'react-native';
-import ScalePressable from '../components/animations/ScalePressable';
-import SlideInList from '../components/animations/SlideInList';
-import FadeInView from '../components/animations/FadeInView';
-import { Swipeable } from 'react-native-gesture-handler';
-// Lucide Icons
-import { Search, RotateCcw, User, MoreVertical, Plus, Sun, Moon, LogOut, Settings, HelpCircle, Archive, CheckSquare, Edit, Trash2 } from 'lucide-react-native';
+import ProfilePhotoModal from '../components/ProfilePhotoModal';
+import { useTheme } from "../context/ThemeContext";
 
 const getAvatarColor = (address) => {
   const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
@@ -33,24 +28,32 @@ const getAvatarColor = (address) => {
   return colors[index];
 };
 
+const CATEGORIES = ['All', 'Family', 'Official', 'Important'];
 
 export default function ChatsList() {
-  const { theme, toggleTheme } = useTheme();
   const navigation = useNavigation();
+  const { theme, toggleTheme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
   const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
   const [smsLoaded, setSmsLoaded] = useState(false);
 
+  // Pagination State
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   // UI States
-  const [searchText, setSearchText] = useState('');
-  // Collections State
-  const [collections, setCollections] = useState(['All', 'Family', 'Official', 'Important']);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [isPhotoModalVisible, setIsPhotoModalVisible] = useState(false);
   // Mock Category Map (In a real app, this would be persisted)
   const [categoryMap, setCategoryMap] = useState({});
-  const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
-  const [newCollectionName, setNewCollectionName] = useState('');
 
   const requestSmsPermissions = async () => {
     try {
@@ -66,89 +69,72 @@ export default function ChatsList() {
     }
   };
 
-  const loadSmsMessages = async (forceRefresh = false) => {
+  const loadSmsMessages = async (refresh = false, nextPage = 1) => {
     try {
-      if (smsLoaded && !forceRefresh) {
+      if (smsLoaded && !refresh && nextPage === 1) {
         return;
       }
 
-      const hasPermissions = await requestSmsPermissions();
-      if (!hasPermissions) {
-        setSmsLoaded(true);
-        return;
+      if (nextPage === 1) {
+        const hasPermissions = await requestSmsPermissions();
+        if (!hasPermissions) {
+          setSmsLoaded(true);
+          return;
+        }
       }
 
-      const messages = await SmsController.fetchSmsMessages();
-      console.log('Total SMS messages fetched:', messages.length);
+      if (nextPage > 1) {
+        setLoadingMore(true);
+      }
 
-      const currentUnreadContacts = new Set();
-      messages.forEach(msg => {
-        if (parseInt(msg.type) === 1 && parseInt(msg.read) === 0) {
-          currentUnreadContacts.add(msg.address);
-        }
-      });
+      console.log('Loading conversations page:', nextPage);
+      const result = await SmsController.getConversations(nextPage);
 
-      setReadContacts(prev => {
-        const newSet = new Set(prev);
-        currentUnreadContacts.forEach(address => {
-          if (newSet.has(address)) {
-            console.log('Removing from read contacts due to new unread:', address);
-            newSet.delete(address);
-          }
-        });
-        return newSet;
-      });
+      if (nextPage === 1) {
+        setContacts(result.conversations);
+      } else {
+        setContacts(prev => [...prev, ...result.conversations]);
+      }
 
-      const contactsMap = {};
-
-      messages.forEach(msg => {
-        const address = msg.address;
-        if (!contactsMap[address]) {
-          contactsMap[address] = {
-            id: address,
-            name: address,
-            messages: [],
-            avatar: address.charAt(0).toUpperCase(),
-            avatarColor: getAvatarColor(address)
-          };
-        }
-        contactsMap[address].messages.push(msg);
-      });
-
-      const contactsList = Object.values(contactsMap).map(contact => {
-        const sortedMessages = contact.messages.sort((a, b) => b.date - a.date);
-        const latestMessage = sortedMessages[0];
-        const unreadMessages = contact.messages.filter(msg => parseInt(msg.type) === 1 && parseInt(msg.read) === 0);
-
-        const finalUnreadCount = readContacts.has(contact.id) ? 0 : unreadMessages.length;
-
-        return {
-          ...contact,
-          lastMessage: latestMessage.body,
-          time: new Date(latestMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          unread: finalUnreadCount,
-          date: latestMessage.date,
-          messageCount: contact.messages.length
-        };
-      }).sort((a, b) => b.date - a.date);
-
-      setContacts(contactsList);
+      setHasMore(result.hasMore);
+      setPage(result.page);
       setSmsLoaded(true);
+
     } catch (error) {
       console.error('SMS fetch error:', error);
       Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
       setSmsLoaded(true);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
   useEffect(() => {
     checkDefaultSmsApp();
-    loadSmsMessages();
+    initializeData();
+    loadProfilePhoto();
   }, []);
+
+  const initializeData = async () => {
+    await SmsController.prefetchContacts();
+    await loadSmsMessages();
+  };
+
+  const loadProfilePhoto = async () => {
+    const uri = await SmsController.getProfilePhoto();
+    if (uri) {
+      setProfilePhoto(uri);
+    }
+  };
+
+  const handleImageSelected = async (uri) => {
+    setProfilePhoto(uri);
+    await SmsController.saveProfilePhoto(uri);
+  };
 
   const refreshSmsData = async () => {
     setSmsLoaded(false);
-    await loadSmsMessages(true);
+    await loadSmsMessages(true, 1);
   };
 
   const checkDefaultSmsApp = async () => {
@@ -187,14 +173,6 @@ export default function ChatsList() {
     }
   };
 
-  const handleAddCollection = () => {
-    if (newCollectionName.trim()) {
-      setCollections([...collections, newCollectionName.trim()]);
-      setNewCollectionName('');
-      setIsAddCollectionVisible(false);
-    }
-  };
-
   // Filter Logic
   const filteredContacts = useMemo(() => {
     let result = contacts;
@@ -216,138 +194,112 @@ export default function ChatsList() {
     return result;
   }, [contacts, selectedCategory, categoryMap, searchText]);
 
-  const renderRightActions = (progress, dragX, item) => {
-    const scale = dragX.interpolate({
-      inputRange: [-100, 0],
-      outputRange: [1, 0],
-      extrapolate: 'clamp',
-    });
-
-    return (
-      <TouchableOpacity
-        style={styles.archiveAction}
-        onPress={() => {
-          Alert.alert("Archived", `${item.name} has been archived.`);
-          // In a real app, update state here to remove/move the item
-        }}
-      >
-        <Animated.View style={{ transform: [{ scale }] }}>
-          <Archive size={24} color="#FFF" />
-          <Text style={styles.actionText}>Archive</Text>
-        </Animated.View>
-      </TouchableOpacity>
-    );
-  };
-
   const renderItem = ({ item }) => (
-    <Swipeable renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}>
-      <ScalePressable
-        style={[styles.chatItem, { backgroundColor: theme.background }]}
-        onPress={() => {
-          markAsRead(item.id);
-          navigation.navigate("Chat", { contactId: item.id, name: item.name });
-        }}
-      >
-        <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
-          <Text style={styles.avatarText}>{item.avatar}</Text>
-        </View>
+    <TouchableOpacity
+      style={styles.chatItem}
+      onPress={() => {
+        markAsRead(item.id);
+        navigation.navigate("Chat", { contactId: item.id, name: item.name });
+      }}
+    >
+      <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
+        <Text style={styles.avatarText}>{item.avatar}</Text>
+      </View>
 
-        <View style={styles.chatContent}>
-          <Text style={[styles.contactName, { color: theme.text }]}>{item.name}</Text>
-          <Text style={[styles.lastMessage, { color: theme.textSecondary }]} numberOfLines={1}>
-            {item.lastMessage}
-          </Text>
-        </View>
+      <View style={styles.chatContent}>
+        <Text style={styles.contactName}>{item.name}</Text>
+        <Text style={styles.lastMessage} numberOfLines={1}>
+          {item.lastMessage}
+        </Text>
+      </View>
 
-        <View style={styles.timeContainer}>
-          <Text style={[styles.timeText, { color: theme.textSecondary }]}>{item.time}</Text>
-          {item.unread > 0 && (
-            <View style={[styles.unreadBadge, { backgroundColor: theme.primary }]}>
-              <Text style={[styles.unreadText, { color: theme.onPrimary }]}>{item.unread}</Text>
-            </View>
-          )}
-        </View>
-      </ScalePressable>
-    </Swipeable>
+      <View style={styles.timeContainer}>
+        <Text style={styles.timeText}>{item.time}</Text>
+        {item.unread > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadText}>{item.unread}</Text>
+          </View>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+    <View style={styles.container}>
       {/* Enhanced Header */}
-      <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
+      <View style={styles.header}>
         {isSearchVisible ? (
           <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
+            style={styles.searchInput}
             placeholder="Search messages..."
-            placeholderTextColor={theme.textSecondary}
+            placeholderTextColor={theme.colors.placeholder}
             value={searchText}
             onChangeText={setSearchText}
             autoFocus
             onBlur={() => !searchText && setIsSearchVisible(false)}
           />
         ) : (
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Messages</Text>
+          <Text style={styles.headerTitle}>Messages</Text>
         )}
 
         <View style={styles.headerActions}>
           {!isSearchVisible && (
-            <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
-              <Search size={22} color={theme.text} />
+            <TouchableOpacity style={styles.iconButton} onPress={() => setIsSearchVisible(true)}>
+              <Text style={styles.iconText}>🔍</Text>
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            style={[styles.iconButton, { marginLeft: 12 }]}
+            style={styles.iconButton}
             onPress={refreshSmsData}
           >
-            <RotateCcw size={22} color={theme.text} />
+            <Text style={styles.iconText}>↻</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
-            <View style={[styles.profileAvatar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-              <User size={20} color={theme.text} />
+            <View style={styles.profileAvatar}>
+              {profilePhoto ? (
+                <Image source={{ uri: profilePhoto }} style={styles.profileImage} />
+              ) : (
+                <Text style={styles.profileAvatarText}>👤</Text>
+              )}
             </View>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Collections Bar */}
-      <View style={[styles.categoryBarContainer, { borderBottomColor: theme.border }]}>
+      {/* Category Bar */}
+      <View style={styles.categoryBarContainer}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScrollView}>
-          {collections.map(cat => (
+          {CATEGORIES.map(cat => (
             <TouchableOpacity
               key={cat}
-              style={[
-                styles.categoryPill,
-                { backgroundColor: selectedCategory === cat ? theme.primary : theme.surface },
-                selectedCategory === cat && styles.categoryPillActive
-              ]}
+              style={[styles.categoryPill, selectedCategory === cat && styles.categoryPillActive]}
               onPress={() => setSelectedCategory(cat)}
             >
-              <Text style={[
-                styles.categoryText,
-                { color: selectedCategory === cat ? theme.onPrimary : theme.textSecondary }
-              ]}>{cat}</Text>
+              <Text style={[styles.categoryText, selectedCategory === cat && styles.categoryTextActive]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity
-            style={[styles.addCategoryButton, { backgroundColor: theme.surface }]}
-            onPress={() => setIsAddCollectionVisible(true)}
-          >
-            <Plus size={20} color={theme.textSecondary} />
+          <TouchableOpacity style={styles.addCategoryButton}>
+            <Text style={styles.addCategoryText}>+</Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
 
-      <SlideInList
+      <FlatList
         data={filteredContacts}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         showsVerticalScrollIndicator={true}
         style={styles.flatList}
         contentContainerStyle={{ paddingBottom: 100 }}
+        onEndReached={() => {
+          if (hasMore && !loadingMore && !searchText && selectedCategory === 'All') {
+            loadSmsMessages(false, page + 1);
+          }
+        }}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 20 }} /> : null}
       />
 
       {/* Profile Overflow Menu */}
@@ -357,102 +309,38 @@ export default function ChatsList() {
         animationType="fade"
         onRequestClose={() => setIsProfileMenuVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.menuContainer, { backgroundColor: theme.background, shadowColor: theme.mode === 'dark' ? '#fff' : '#000' }]}>
-
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsProfileMenuVisible(false)}
+        >
+          <TouchableWithoutFeedback>
+            <View style={styles.menuContainer}>
+              <TouchableOpacity style={styles.menuItem} onPress={toggleTheme}>
+                <Text style={styles.menuText}>{theme.dark ? "Switch to Light Mode" : "Switch to Dark Mode"}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
                   setIsProfileMenuVisible(false);
-                  navigation.navigate('YourProfile');
+                  setIsPhotoModalVisible(true);
                 }}
               >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <User size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Your Profile</Text>
+                <Text style={styles.menuText}>Change Profile Photo</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setIsProfileMenuVisible(false);
-                  navigation.navigate('Archived');
-                }}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <Archive size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Archived</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <CheckSquare size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Mark All as Read</Text>
+                <Text style={styles.menuText}>Settings</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <Edit size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Edit Categories</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <Trash2 size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Recycle Bin</Text>
-              </TouchableOpacity>
-
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
                   setIsProfileMenuVisible(false);
-                  navigation.navigate('Settings');
+                  navigation.navigate('ContactUs');
                 }}
               >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <Settings size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Settings</Text>
+                <Text style={styles.menuText}>Contact Us</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setIsProfileMenuVisible(false);
-                  navigation.navigate('HelpandFeedback');
-                }}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <HelpCircle size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Help & Feedback</Text>
-              </TouchableOpacity>
-
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-              <View style={[styles.menuItem, { justifyContent: 'space-between' }]}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                    {theme.mode === 'light' ? <Sun size={18} color={theme.text} /> : <Moon size={18} color={theme.text} />}
-                  </View>
-                  <Text style={[styles.menuText, { color: theme.text }]}>Dark Mode</Text>
-                </View>
-                <Switch
-                  value={theme.mode === 'dark'}
-                  onValueChange={toggleTheme}
-                  trackColor={{ false: "#767577", true: theme.primary }}
-                  thumbColor={theme.mode === 'dark' ? "#f4f3f4" : "#f4f3f4"}
-                />
-              </View>
-
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
+              <View style={styles.divider} />
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
@@ -460,53 +348,21 @@ export default function ChatsList() {
                   navigation.replace('InfoOne');
                 }}
               >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <LogOut size={18} color={theme.danger} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.danger }]}>Logout</Text>
+                <Text style={[styles.menuText, { color: '#dc3545' }]}>Logout</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-
-      {/* Add Collection Modal */}
-      <Modal
-        visible={isAddCollectionVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setIsAddCollectionVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.menuContainer, { backgroundColor: theme.background, alignSelf: 'center', top: '30%', minWidth: 250 }]}>
-            <Text style={[styles.menuText, { marginBottom: 12, color: theme.text }]}>New Collection</Text>
-            <TextInput
-              style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, padding: 8, color: theme.text, marginBottom: 16 }}
-              placeholder="Collection Name"
-              placeholderTextColor={theme.textSecondary}
-              value={newCollectionName}
-              onChangeText={setNewCollectionName}
-              autoFocus
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => setIsAddCollectionVisible(false)} style={{ marginRight: 16 }}>
-                <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleAddCollection}>
-                <Text style={{ color: theme.primary, fontWeight: '600' }}>Add</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
       </Modal>
 
       {/* Floating Action Button */}
-      <ScalePressable
+      <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('NewChat')}
+        activeOpacity={0.8}
       >
-        <Plus size={32} color="#ffffff" />
-      </ScalePressable>
+        <Text style={styles.fabText}>✎</Text>
+      </TouchableOpacity>
 
       <DefaultSmsPrompt
         visible={showDefaultPrompt}
@@ -516,19 +372,25 @@ export default function ChatsList() {
           Alert.alert('Success', 'App is now your default SMS app!');
         }}
       />
+
+      <ProfilePhotoModal
+        visible={isPhotoModalVisible}
+        onClose={() => setIsPhotoModalVisible(false)}
+        onImageSelected={handleImageSelected}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.headerBackground,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 0,
@@ -537,7 +399,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: theme.colors.text,
     flex: 1,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
@@ -548,7 +410,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 18,
-    color: '#333',
+    color: theme.colors.text,
     paddingVertical: 0,
   },
   iconButton: {
@@ -557,22 +419,7 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 20,
-    color: '#333',
-  },
-  searchIconButton: {
-    marginLeft: 12,
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: '#f0f2f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#e1e4e8',
-  },
-  searchIconText: {
-    fontSize: 18,
-    color: '#333',
+    color: theme.colors.iconColor,
   },
   profileButton: {
     marginLeft: 12,
@@ -581,21 +428,27 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: theme.colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e1e4e8',
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: 36,
+    height: 36,
   },
   profileAvatarText: {
     fontSize: 18,
+    color: theme.colors.text,
   },
 
   // Category Bar
   categoryBarContainer: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f2f5',
+    borderBottomColor: theme.colors.secondary,
   },
   categoryScrollView: {
     paddingHorizontal: 20,
@@ -604,17 +457,17 @@ const styles = StyleSheet.create({
   categoryPill: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: theme.colors.secondary,
     borderRadius: 20,
     marginRight: 8,
   },
   categoryPillActive: {
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
   },
   categoryText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#65676b',
+    color: theme.colors.textSecondary,
   },
   categoryTextActive: {
     color: '#ffffff',
@@ -623,14 +476,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: theme.colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
   },
   addCategoryText: {
     fontSize: 20,
-    color: '#65676b',
+    color: theme.colors.textSecondary,
     fontWeight: '300',
   },
 
@@ -640,7 +493,7 @@ const styles = StyleSheet.create({
   chatItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.card,
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
@@ -664,12 +517,12 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: theme.colors.text,
     marginBottom: 4,
   },
   lastMessage: {
     fontSize: 15,
-    color: '#65676b',
+    color: theme.colors.textSecondary,
   },
   timeContainer: {
     alignItems: 'flex-end',
@@ -677,11 +530,11 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 13,
-    color: '#8a8d91',
+    color: theme.colors.textSecondary,
     marginBottom: 6,
   },
   unreadBadge: {
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -702,7 +555,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
@@ -720,13 +573,13 @@ const styles = StyleSheet.create({
   // Modal / Menu
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: theme.colors.modalOverlay,
   },
   menuContainer: {
     position: 'absolute',
     top: 60,
     right: 20,
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.menuBackground,
     borderRadius: 12,
     elevation: 5,
     shadowColor: '#000',
@@ -737,31 +590,18 @@ const styles = StyleSheet.create({
     minWidth: 180,
   },
   menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderRadius: 8,
-  },
-  menuIconBox: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    backgroundColor: '#f0f2f5',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  menuIcon: {
-    fontSize: 16,
-    color: '#555',
   },
   menuText: {
     fontSize: 16,
+    color: theme.colors.text,
     fontWeight: '500',
   },
   divider: {
     height: 1,
+    backgroundColor: theme.colors.divider,
     marginVertical: 4,
   },
 });
