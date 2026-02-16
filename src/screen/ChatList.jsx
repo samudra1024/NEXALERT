@@ -515,7 +515,7 @@ export default function ChatsList() {
                 style={styles.menuItem}
                 onPress={() => {
                   setIsProfileMenuVisible(false);
-                  navigation.replace('InfoOne');
+                  navigation.replace('Onboarding');
                 }}
               >
                 <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>

@@ -3,11 +3,8 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import OtpVerification from './src/screen/OtpVerification';
-import EnterOtp from './src/screen/EnterOtp';
-import InfoOne from './src/screen/InfoOne';
-import InfoTwo from './src/screen/InfoTwo';
-import InfoThree from './src/screen/InfoThree';
+import AuthScreen from './src/screen/AuthScreen';
+import Onboarding from './src/screen/Onboarding';
 import ChatList from './src/screen/ChatList';
 import ChatScreen from './src/screen/ChatScreen';
 import NewChat from './src/screen/NewChat';
@@ -30,7 +27,7 @@ export default function App() {
         <ThemeProvider>
           <NavigationContainer>
             <Stack.Navigator
-              initialRouteName="InfoOne"
+              initialRouteName="Onboarding"
               screenOptions={{
                 headerShown: false,
                 gestureEnabled: true,
@@ -51,11 +48,8 @@ export default function App() {
               }}
             >
 
-              <Stack.Screen name="InfoOne" component={InfoOne} />
-              <Stack.Screen name="OtpVerification" component={OtpVerification} />
-              <Stack.Screen name="EnterOtp" component={EnterOtp} />
-              <Stack.Screen name="InfoTwo" component={InfoTwo} />
-              <Stack.Screen name="InfoThree" component={InfoThree} />
+              <Stack.Screen name="Onboarding" component={Onboarding} />
+              <Stack.Screen name="AuthScreen" component={AuthScreen} />
               <Stack.Screen name="ChatsList" component={ChatList} />
               <Stack.Screen name="Chat" component={ChatScreen} />
               <Stack.Screen name="NewChat" component={NewChat} />

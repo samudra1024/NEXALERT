@@ -1,4 +1,4 @@
-import React from 'react';
+// import React from 'react';
 import {
   StyleSheet,
   Text,
@@ -52,7 +52,7 @@ const InfoOne = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A1E3C', // Dark blue background color
+    backgroundColor: '#ffffffff', // Dark blue background color
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 20,
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: 18,
-    color: '#FFFFFF',
+    color: '#298cff',
     fontWeight: 'bold',
   },
   content: {
@@ -79,13 +79,13 @@ const styles = StyleSheet.create({
     width: 150,
     height: 150,
     resizeMode: 'contain',
-    tintColor: '#FFFFFF',
+    tintColor: '#298cff',
     marginBottom: 30,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#298cff',
     textAlign: 'center',
     marginBottom: 40, // Space between title and dots
   },
@@ -109,7 +109,7 @@ const styles = StyleSheet.create({
   nextButton: {
     width: '80%',
     paddingVertical: 15,
-    backgroundColor: '#007AFF', // A shade of blue for the button
+    backgroundColor: '#298cff', // A shade of blue for the button
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
