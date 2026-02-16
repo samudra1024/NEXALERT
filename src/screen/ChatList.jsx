@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
+import CategoryController from '../../Controller/CategoryController';
 import DefaultSmsPrompt from './DefaultSmsPrompt';
 import { useTheme } from '../context/ThemeContext';
 import { Switch } from 'react-native';
@@ -52,12 +53,13 @@ export default function ChatsList() {
   // UI States
   const [searchText, setSearchText] = useState('');
   // Collections State
-  const [collections, setCollections] = useState(['All', 'Family', 'Official', 'Important']);
+  const [collections, setCollections] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   // Mock Category Map (In a real app, this would be persisted)
   const [categoryMap, setCategoryMap] = useState({});
   const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
+  const [editingCategory, setEditingCategory] = useState(null);
 
   // UI Visibility States
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -120,7 +122,19 @@ export default function ChatsList() {
   useEffect(() => {
     checkDefaultSmsApp();
     loadSmsMessages();
-  }, []);
+    loadCategories();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadSmsMessages(true); // Refresh on focus (e.g. returning from Recycle Bin)
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  const loadCategories = async () => {
+    const cats = await CategoryController.getCategories();
+    setCollections(cats);
+  };
 
   const refreshSmsData = async () => {
     setSmsLoaded(false);
@@ -135,6 +149,16 @@ export default function ChatsList() {
       }
     } catch (error) {
       console.error('Error checking default SMS app:', error);
+    }
+  };
+
+  const handleMarkAllAsRead = async () => {
+    try {
+      await SmsController.markAllAsRead();
+      setContacts(prev => prev.map(c => ({ ...c, unread: 0 })));
+      Alert.alert("Success", "All messages marked as read.");
+    } catch (e) {
+      console.error("Error marking all as read", e);
     }
   };
 
@@ -163,12 +187,38 @@ export default function ChatsList() {
     }
   };
 
-  const handleAddCollection = () => {
+  const handleAddCollection = async () => {
     if (newCollectionName.trim()) {
-      setCollections([...collections, newCollectionName.trim()]);
+      const updated = await CategoryController.addCategory(newCollectionName.trim());
+      setCollections(updated);
       setNewCollectionName('');
       setIsAddCollectionVisible(false);
     }
+  };
+
+  const handleRenameCategory = async () => {
+    if (newCollectionName.trim() && editingCategory) {
+      try {
+        const updated = await CategoryController.renameCategory(editingCategory, newCollectionName.trim());
+        setCollections(updated);
+        // Update selection if we renamed the currently selected one
+        if (selectedCategory === editingCategory) {
+          setSelectedCategory(newCollectionName.trim());
+        }
+        setNewCollectionName('');
+        setEditingCategory(null);
+        setIsAddCollectionVisible(false);
+      } catch (e) {
+        Alert.alert("Error", e.message);
+      }
+    }
+  };
+
+  const initiateEditCategory = (category) => {
+    if (category === 'All') return; // Cannot edit 'All'
+    setEditingCategory(category);
+    setNewCollectionName(category);
+    setIsAddCollectionVisible(true);
   };
 
   // Filter Logic
@@ -201,15 +251,28 @@ export default function ChatsList() {
 
     return (
       <TouchableOpacity
-        style={styles.archiveAction}
+        style={[styles.archiveAction, { backgroundColor: '#ef4444' }]} // Red for Delete
         onPress={() => {
-          Alert.alert("Archived", `${item.name} has been archived.`);
-          // In a real app, update state here to remove/move the item
+          Alert.alert(
+            "Move to Recycle Bin?",
+            `Are you sure you want to delete conversation with ${item.name}?`,
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Delete",
+                style: "destructive",
+                onPress: async () => {
+                  await SmsController.recycleConversation(item.id);
+                  // Remove from local list immediately
+                  setContacts(prev => prev.filter(c => c.id !== item.id));
+                }
+              }
+            ]
+          );
         }}
       >
         <Animated.View style={{ transform: [{ scale }] }}>
-          <Archive size={24} color="#FFF" />
-          <Text style={styles.actionText}>Archive</Text>
+          <Trash2 size={28} color="#FFF" />
         </Animated.View>
       </TouchableOpacity>
     );
@@ -301,6 +364,8 @@ export default function ChatsList() {
                 selectedCategory === cat && styles.categoryPillActive
               ]}
               onPress={() => setSelectedCategory(cat)}
+              onLongPress={() => initiateEditCategory(cat)}
+              delayLongPress={500}
             >
               <Text style={[
                 styles.categoryText,
@@ -370,21 +435,20 @@ export default function ChatsList() {
                 <Text style={[styles.menuText, { color: theme.text }]}>Archived</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => {
+                setIsProfileMenuVisible(false);
+                handleMarkAllAsRead();
+              }}>
                 <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
                   <CheckSquare size={18} color={theme.text} />
                 </View>
                 <Text style={[styles.menuText, { color: theme.text }]}>Mark All as Read</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <Edit size={18} color={theme.text} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.text }]}>Edit Categories</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+              <TouchableOpacity style={styles.menuItem} onPress={() => {
+                setIsProfileMenuVisible(false);
+                navigation.navigate('RecycleBin');
+              }}>
                 <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
                   <Trash2 size={18} color={theme.text} />
                 </View>
@@ -453,16 +517,22 @@ export default function ChatsList() {
         </TouchableWithoutFeedback>
       </Modal>
 
-      {/* Add Collection Modal */}
+      {/* Add/Edit Collection Modal */}
       <Modal
         visible={isAddCollectionVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setIsAddCollectionVisible(false)}
+        onRequestClose={() => {
+          setIsAddCollectionVisible(false);
+          setEditingCategory(null);
+          setNewCollectionName('');
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={[styles.menuContainer, { backgroundColor: theme.background, alignSelf: 'center', top: '30%', minWidth: 250 }]}>
-            <Text style={[styles.menuText, { marginBottom: 12, color: theme.text }]}>New Collection</Text>
+            <Text style={[styles.menuText, { marginBottom: 12, color: theme.text }]}>
+              {editingCategory ? "Edit Category" : "New Collection"}
+            </Text>
             <TextInput
               style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, padding: 8, color: theme.text, marginBottom: 16 }}
               placeholder="Collection Name"
@@ -472,11 +542,20 @@ export default function ChatsList() {
               autoFocus
             />
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-              <TouchableOpacity onPress={() => setIsAddCollectionVisible(false)} style={{ marginRight: 16 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  setIsAddCollectionVisible(false);
+                  setEditingCategory(null);
+                  setNewCollectionName('');
+                }}
+                style={{ marginRight: 16 }}
+              >
                 <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleAddCollection}>
-                <Text style={{ color: theme.primary, fontWeight: '600' }}>Add</Text>
+              <TouchableOpacity onPress={editingCategory ? handleRenameCategory : handleAddCollection}>
+                <Text style={{ color: theme.primary, fontWeight: '600' }}>
+                  {editingCategory ? "Save" : "Add"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -746,5 +825,29 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     marginVertical: 4,
+  },
+
+  // Swipe Actions
+  archiveAction: {
+    width: 60,
+    height: 60,
+    backgroundColor: '#ef4444',
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 10,
+    marginHorizontal: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 1.41,
+  },
+  actionText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
+    marginTop: 2,
+    display: 'none', // Hiding text as per Screenshot 2 which has just icon
   },
 });

@@ -253,6 +253,214 @@ class SmsController {
     }
   }
 
+  // --- RECYCLE BIN FEATURES ---
+
+  static RECYCLE_BIN_KEY = 'recycled_sms_ids';
+
+  // Get recycled message IDs
+  static async getRecycledMessageIds() {
+    try {
+      const json = await AsyncStorage.getItem(this.RECYCLE_BIN_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch (e) {
+      console.error("Error getting recycled IDs", e);
+      return [];
+    }
+  }
+
+  // Recycle a conversation (hide from main list, show in recycle bin)
+  static async recycleConversation(threadId) {
+    try {
+      const recycled = await this.getRecycledMessageIds();
+      if (!recycled.includes(threadId)) {
+        recycled.push(threadId);
+        await AsyncStorage.setItem(this.RECYCLE_BIN_KEY, JSON.stringify(recycled));
+      }
+      return true;
+    } catch (e) {
+      console.error("Error recycling conversation", e);
+      return false;
+    }
+  }
+
+  // Restore a conversation
+  static async restoreConversation(threadId) {
+    try {
+      let recycled = await this.getRecycledMessageIds();
+      recycled = recycled.filter(id => id !== threadId);
+      await AsyncStorage.setItem(this.RECYCLE_BIN_KEY, JSON.stringify(recycled));
+      return true;
+    } catch (e) {
+      console.error("Error restoring conversation", e);
+      return false;
+    }
+  }
+
+  // Permanently delete a conversation
+  static async permanentDeleteConversation(threadId) {
+    try {
+      // 1. Remove from recycled list
+      await this.restoreConversation(threadId);
+
+      // 2. Delete using Native Module (not implemented in mock usually, but let's assume usage of deleteSms)
+      // NOTE: 'threadId' here is actually the 'address' in our logic because we group by address. 
+      // Real deletion by thread_id would require mapping address -> thread_id or deleting all msgs from address.
+      // For now, we will just delete from our local "recycled" view effectively if we wanted to mimic it, 
+      // BUT the requirement implies "Recycle bin functionality".
+
+      // If we want to actually delete from phone:
+      // const messages = await this.fetchSmsMessages();
+      // const idsToDelete = messages.filter(m => m.address === threadId).map(m => m._id);
+      // await this.deleteSms(idsToDelete);
+
+      // For this task, "Recycle bin" usually implies a staging area. 
+      // "Permanent delete" implies it's gone for good. 
+
+      // Fetch messages for this contact to get their IDs
+      const messages = await this.fetchSmsMessages();
+      const idsToDelete = messages
+        .filter(msg => msg.address === threadId)
+        .map(msg => msg._id);
+
+      if (idsToDelete.length > 0) {
+        await this.deleteSms(idsToDelete);
+      }
+      return true;
+
+    } catch (e) {
+      console.error("Error permanently deleting conversation", e);
+      return false;
+    }
+  }
+
+  // Get conversations but EXCLUDE recycled ones
+  static async getConversations(page = 1, limit = 20) {
+    try {
+      const messages = await this.fetchSmsMessages();
+      const recycledIds = await this.getRecycledMessageIds();
+
+      // Group by address
+      const conversationsMap = {};
+
+      // Sort messages by date descending first to ensuring we capture the latest
+      messages.sort((a, b) => b.date - a.date);
+
+      messages.forEach(msg => {
+        const address = msg.address;
+
+        // SKIP if this conversation is recycled
+        if (recycledIds.includes(address)) return;
+
+        if (!conversationsMap[address]) {
+          conversationsMap[address] = {
+            id: address,
+            name: address, // In a real app, resolve contact name here
+            avatar: address[0] || '?',
+            avatarColor: this.getAvatarColor(address),
+            lastMessage: msg.body,
+            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawTime: msg.date,
+            unread: 0,
+          };
+        }
+
+        // Count unread (type 1 is received)
+        if (msg.read === 0 && msg.type === 1) {
+          conversationsMap[address].unread++;
+        }
+      });
+
+      // Convert to array
+      const sortedConversations = Object.values(conversationsMap);
+      // Ensure conversations are sorted by latest message
+      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
+
+      // Pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedConversations = sortedConversations.slice(startIndex, endIndex);
+
+      return {
+        conversations: paginatedConversations,
+        hasMore: endIndex < sortedConversations.length,
+        page: page
+      };
+
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  }
+
+  // Get ONLY recycled conversations
+  static async getRecycledConversations() {
+    try {
+      const messages = await this.fetchSmsMessages();
+      const recycledIds = await this.getRecycledMessageIds();
+
+      if (recycledIds.length === 0) return [];
+
+      const conversationsMap = {};
+
+      // Sort for latest message
+      messages.sort((a, b) => b.date - a.date);
+
+      messages.forEach(msg => {
+        const address = msg.address;
+
+        // ONLY include if recycled
+        if (!recycledIds.includes(address)) return;
+
+        if (!conversationsMap[address]) {
+          conversationsMap[address] = {
+            id: address,
+            name: address,
+            avatar: address[0] || '?',
+            avatarColor: this.getAvatarColor(address),
+            lastMessage: msg.body,
+            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawTime: msg.date,
+            unread: 0, // Unread count might not matter in trash, but good to have
+          };
+        }
+        // Count unread (type 1 is received)
+        if (msg.read === 0 && msg.type === 1) {
+          conversationsMap[address].unread++;
+        }
+      });
+
+      const sortedConversations = Object.values(conversationsMap);
+      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
+      return sortedConversations;
+
+    } catch (error) {
+      console.error('Error getting recycled conversations:', error);
+      return [];
+    }
+  }
+
+
+  // Mark ALL conversations as read
+  static async markAllAsRead() {
+    try {
+      // Since the native module markAsRead usually takes an address/threadId, 
+      // we need to find all unread conversations and mark them.
+      // OR if the native module supports a global "mark all", use that.
+      // Assuming we need to iterate for now given the existing `markAsRead(address)`.
+
+      const conversations = await this.getConversations(1, 1000); // Get a large batch
+      const unreadConvos = conversations.conversations.filter(c => c.unread > 0);
+
+      const promises = unreadConvos.map(c => this.markAsRead(c.id));
+      await Promise.all(promises);
+
+      return true;
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+      return false;
+    }
+  }
+
 }
 
 export default SmsController;

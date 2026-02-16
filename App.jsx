@@ -15,6 +15,7 @@ import YourProfile from './src/profile/YourProfile';
 import Archived from './src/profile/Archived';
 import Settings from './src/profile/Settings';
 import AdvancedSettings from './src/profile/AdvancedSettings';
+import RecycleBin from './src/screen/RecycleBin';
 import { SettingsProvider } from './src/context/SettingsContext';
 
 
@@ -62,6 +63,7 @@ export default function App() {
               <Stack.Screen name="Archived" component={Archived} />
               <Stack.Screen name="Settings" component={Settings} />
               <Stack.Screen name="AdvancedSettings" component={AdvancedSettings} />
+              <Stack.Screen name="RecycleBin" component={RecycleBin} />
             </Stack.Navigator>
           </NavigationContainer>
         </ThemeProvider>
