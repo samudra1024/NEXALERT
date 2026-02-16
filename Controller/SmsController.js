@@ -55,6 +55,100 @@ class SmsController {
     }
   }
 
+  // Helper to get avatar color
+  static getAvatarColor(address) {
+    const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
+    const index = address.charCodeAt(0) % colors.length;
+    return colors[index];
+  }
+
+  // Get conversations (grouped by address) with pagination
+  static async getConversations(page = 1, limit = 20) {
+    try {
+      const messages = await this.fetchSmsMessages();
+
+      // Group by address
+      const conversationsMap = {};
+
+      // Sort messages by date descending first to ensuring we capture the latest
+      messages.sort((a, b) => b.date - a.date);
+
+      messages.forEach(msg => {
+        const address = msg.address;
+
+        if (!conversationsMap[address]) {
+          conversationsMap[address] = {
+            id: address,
+            name: address, // In a real app, resolve contact name here
+            avatar: address[0] || '?',
+            avatarColor: this.getAvatarColor(address),
+            lastMessage: msg.body,
+            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawTime: msg.date,
+            unread: 0,
+          };
+        }
+
+        // Count unread (type 1 is received)
+        if (msg.read === 0 && msg.type === 1) {
+          conversationsMap[address].unread++;
+        }
+      });
+
+      // Convert to array
+      const sortedConversations = Object.values(conversationsMap);
+      // Ensure conversations are sorted by latest message
+      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
+
+      // Pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedConversations = sortedConversations.slice(startIndex, endIndex);
+
+      return {
+        conversations: paginatedConversations,
+        hasMore: endIndex < sortedConversations.length,
+        page: page
+      };
+
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  }
+
+  // Get messages for a specific chat
+  static async getChatMessages(contactId, page = 1, limit = 20) {
+    try {
+      const messages = await this.fetchSmsMessages();
+
+      const chatMessages = messages.filter(msg => msg.address === contactId);
+
+      // Sort by date descending (newest first)
+      chatMessages.sort((a, b) => b.date - a.date); // or b.date - a.date depending on UI needs. ChatScreen seems to expect newest first.
+
+      // Pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedMessages = chatMessages.slice(startIndex, endIndex);
+
+      return {
+        messages: paginatedMessages,
+        hasMore: endIndex < chatMessages.length,
+        page: page
+      };
+    } catch (error) {
+      console.error('Error getting chat messages:', error);
+      throw error;
+    }
+  }
+
+  // Get starred messages
+  static async getStarredMessages() {
+    // Mock implementation as native module generally doesn't support starring
+    return [];
+  }
+
   // Send SMS
   static async sendSms(phoneNumber, message) {
     try {

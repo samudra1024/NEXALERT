@@ -14,7 +14,8 @@ import {
   Modal,
   TouchableWithoutFeedback,
   TextInput,
-  ActivityIndicator
+  ActivityIndicator,
+  Animated
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
@@ -57,6 +58,10 @@ export default function ChatsList() {
   const [categoryMap, setCategoryMap] = useState({});
   const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
+
+  // UI Visibility States
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
 
   const requestSmsPermissions = async () => {
     try {

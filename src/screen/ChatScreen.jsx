@@ -28,7 +28,7 @@ import { useSettings } from '../context/SettingsContext';
 // Re-import Animated to ensure we have the correct one for gestures if needed, 
 // though we usually use react-native-reanimated for this.
 // Assuming Animated from react-native is already imported, we might need Reanimated for smoother zoom.
-import { useSharedValue, useAnimatedStyle, withSpring, FadeInUp, FadeInRight, FadeInLeft } from 'react-native-reanimated';
+import { useSharedValue, useAnimatedStyle, withSpring, FadeInUp, FadeInRight, FadeInLeft, useAnimatedGestureHandler } from 'react-native-reanimated';
 import Reanimated from 'react-native-reanimated';
 import ScalePressable from '../components/animations/ScalePressable';
 import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Image as ImageIcon } from 'lucide-react-native';
@@ -60,7 +60,7 @@ export default function ChatScreen() {
 
   // Zoom State
   const scale = useSharedValue(1);
-  const onPinchEvent = Reanimated.useAnimatedGestureHandler({
+  const onPinchEvent = useAnimatedGestureHandler({
     onActive: (event) => {
       if (settings.pinchToZoom) {
         scale.value = event.scale;
@@ -399,24 +399,24 @@ export default function ChatScreen() {
                 {item.text}
               </Text>
               <Text>
-              {item.imageUri && (
-                <Image
-                  source={{ uri: item.imageUri }}
-                  style={{ width: 200, height: 200, borderRadius: 8, marginTop: 4 }}
-                  resizeMode="cover"
-                />
-              )}
-              <View style={styles.messageFooter}>
-                <Text style={[
-                  styles.timeText,
-                  item.sender === "me"
-                    ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
-                    : [styles.otherTimeText, { color: theme.textSecondary }]
-                ]}>
-                  {item.time}
-                  {item.isEdited && <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text>}
-                </Text>
-              </View>
+                {item.imageUri && (
+                  <Image
+                    source={{ uri: item.imageUri }}
+                    style={{ width: 200, height: 200, borderRadius: 8, marginTop: 4 }}
+                    resizeMode="cover"
+                  />
+                )}
+                <View style={styles.messageFooter}>
+                  <Text style={[
+                    styles.timeText,
+                    item.sender === "me"
+                      ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
+                      : [styles.otherTimeText, { color: theme.textSecondary }]
+                  ]}>
+                    {item.time}
+                    {item.isEdited && <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text>}
+                  </Text>
+                </View>
               </Text>
               {selectedMessages.includes(item.id) && <Check size={14} color={theme.text} style={{ marginLeft: 8 }} />}
             </View>
