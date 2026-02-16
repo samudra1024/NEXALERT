@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,17 +8,20 @@ import {
   Modal,
 } from 'react-native';
 import SmsController from '../../Controller/SmsController';
+import { useTheme } from "../context/ThemeContext";
 
 export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
   const [checking, setChecking] = useState(false);
+  const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
   const handleSetDefault = async () => {
     try {
       setChecking(true);
-      
+
       // Request default SMS app using RoleManager
       await SmsController.requestDefaultSmsApp();
-      
+
       // Check after a delay to see if user accepted
       setTimeout(async () => {
         try {
@@ -27,18 +30,20 @@ export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
             onSuccess();
           } else {
             Alert.alert(
-              'Set as Default SMS App', 
+              'Set as Default SMS App',
               'Please select this app in the system dialog. If no dialog appeared, the app may not meet all requirements.',
               [
                 { text: 'Try Again', onPress: handleSetDefault },
-                { text: 'Open Settings', onPress: async () => {
-                  try {
-                    await SmsController.openSmsAppSettings();
-                  } catch (settingsError) {
-                    console.error('Error opening settings:', settingsError);
+                {
+                  text: 'Open Settings', onPress: async () => {
+                    try {
+                      await SmsController.openSmsAppSettings();
+                    } catch (settingsError) {
+                      console.error('Error opening settings:', settingsError);
+                    }
+                    setChecking(false);
                   }
-                  setChecking(false);
-                }},
+                },
                 { text: 'Cancel', onPress: () => setChecking(false) }
               ]
             );
@@ -49,7 +54,7 @@ export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
           setChecking(false);
         }
       }, 3000);
-      
+
     } catch (error) {
       console.error('Error requesting default SMS app:', error);
       Alert.alert('Error', 'Failed to request default SMS app: ' + error.message);
@@ -65,18 +70,18 @@ export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
           <Text style={styles.message}>
             To provide the best SMS experience, please set this app as your default SMS application in Settings.
           </Text>
-          
+
           <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={styles.cancelButton} 
+            <TouchableOpacity
+              style={styles.cancelButton}
               onPress={onClose}
               disabled={checking}
             >
               <Text style={styles.cancelText}>Later</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.setButton} 
+
+            <TouchableOpacity
+              style={styles.setButton}
               onPress={handleSetDefault}
               disabled={checking}
             >
@@ -91,15 +96,15 @@ export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: theme.colors.modalOverlay,
     justifyContent: 'center',
     alignItems: 'center',
   },
   container: {
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.card,
     borderRadius: 16,
     padding: 24,
     margin: 20,
@@ -108,13 +113,13 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#212529',
+    color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 12,
   },
   message: {
     fontSize: 16,
-    color: '#6c757d',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
     marginBottom: 24,
@@ -128,12 +133,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginRight: 8,
     borderRadius: 8,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.secondary,
   },
   cancelText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6c757d',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
   },
   setButton: {
@@ -141,7 +146,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginLeft: 8,
     borderRadius: 8,
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
   },
   setText: {
     fontSize: 16,

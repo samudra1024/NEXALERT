@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -15,6 +15,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import axios from "axios";
 import { BaseURL } from '../config/API';
+import { useTheme } from "../context/ThemeContext";
 
 import OTP_ILLUSTRATION from '../assets/images/OTP.png'; // Ensure this path is correct
 
@@ -23,6 +24,8 @@ export default function OtpVerification() {
   const [loading, setLoading] = useState(false);
   const [error, seterror] = useState(false);
   const navigation = useNavigation();
+  const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
   const handleGetOtp = async () => {
     setLoading(true);
@@ -33,7 +36,7 @@ export default function OtpVerification() {
       setLoading(false);
       return;
     }
-    
+
     console.log(mobileNumber)
     // Simulate API call to send OTP
     // IMPORTANT: Ensure you set BaseURL in config/API.js to your computer's local IP, not 'localhost'.
@@ -41,12 +44,12 @@ export default function OtpVerification() {
     // Use imported BaseURL and add diagnostics
     console.log('Sending OTP to:', `${BaseURL}/send-otp`);
     //navigation.navigate('EnterOtp'); // Navigate to InfoOne screen
-    try{
+    try {
       const res = await axios.post(`${BaseURL}/send-otp`, { phoneNumber: `+91${mobileNumber}` });
 
       console.log('Response from OTP API:', res.data.success);
 
-    
+
       if (res.data.success) {
         console.log('OTP sent successfully!')
         Alert.alert('OTP sent successfully!');
@@ -89,14 +92,14 @@ export default function OtpVerification() {
             <TextInput
               style={styles.input}
               placeholder="1234567891"
-              placeholderTextColor="#B5B5B5"
+              placeholderTextColor={theme.colors.placeholder}
               keyboardType="phone-pad"
               value={mobileNumber}
               onChangeText={setMobileNumber}
             />
           </View>
           {loading ? (
-            <ActivityIndicator size="large" color="#007AFF" />
+            <ActivityIndicator size="large" color={theme.colors.primary} />
           ) : (
             <TouchableOpacity style={styles.button} onPress={handleGetOtp}>
               <Text style={styles.buttonText}>Get OTP</Text>
@@ -114,10 +117,10 @@ export default function OtpVerification() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: theme.colors.background,
   },
   safeArea: {
     flex: 1,
@@ -138,12 +141,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#000',
+    color: theme.colors.text,
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
-    color: '#828282',
+    color: theme.colors.textSecondary,
     textAlign: 'center',
     marginBottom: 40,
   },
@@ -155,25 +158,26 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -10,
     left: 12,
-    backgroundColor: '#F7F8FA',
+    backgroundColor: theme.colors.background, // Match container bg to hide line
     paddingHorizontal: 4,
     fontSize: 14,
-    color: '#2F80ED',
+    color: theme.colors.primary,
     zIndex: 1,
   },
   input: {
     width: '100%',
     height: 50,
-    borderColor: '#2F80ED',
+    borderColor: theme.colors.primary,
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 16,
     fontSize: 16,
-    color: 'black',
+    color: theme.colors.inputText,
+    backgroundColor: theme.colors.inputBackground,
   },
   button: {
     width: '100%',
-    backgroundColor: '#2F80ED',
+    backgroundColor: theme.colors.primary,
     paddingVertical: 16,
     borderRadius: 8,
     alignItems: 'center',
@@ -189,11 +193,11 @@ const styles = StyleSheet.create({
   },
   footerNormalText: {
     fontSize: 14,
-    color: '#828282',
+    color: theme.colors.textSecondary,
   },
   footerLinkText: {
     fontSize: 14,
-    color: '#2F80ED',
+    color: theme.colors.primary,
     fontWeight: '600',
   },
 });

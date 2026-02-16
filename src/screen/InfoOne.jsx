@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,14 +8,17 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
+import { useTheme } from "../context/ThemeContext";
 
 const { width } = Dimensions.get('window');
 const shieldLockIcon = require('../assets/images/img1.png'); // Ensure this path is correct
 
 const InfoOne = () => {
+  const navigation = useNavigation();
+  const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
-    const navigation = useNavigation();
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -23,12 +26,12 @@ const InfoOne = () => {
           <Text style={styles.skipText}>Skip</Text>
         </TouchableOpacity>
       </View>
-      
+
       <View style={styles.content}>
         <Image
           // Use require for local images.
-          source={shieldLockIcon} 
-          style={styles.image}
+          source={shieldLockIcon}
+          style={[styles.image, { tintColor: theme.colors.text }]}
         />
         <Text style={styles.title}>Your Shield Against SMS Scams!</Text>
         <View style={styles.paginationContainer}>
@@ -47,10 +50,10 @@ const InfoOne = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A1E3C', // Dark blue background color
+    backgroundColor: theme.colors.background,
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingTop: 20,
@@ -63,7 +66,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: 18,
-    color: '#FFFFFF',
+    color: theme.colors.text,
     fontWeight: 'bold',
   },
   content: {
@@ -77,13 +80,12 @@ const styles = StyleSheet.create({
     width: 150,
     height: 150,
     resizeMode: 'contain',
-    tintColor: '#FFFFFF',
     marginBottom: 30,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: theme.colors.text,
     textAlign: 'center',
     marginBottom: 40, // Space between title and dots
   },
@@ -99,15 +101,15 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   activeDot: {
-    backgroundColor: '#007AFF', // Blue color for the active dot
+    backgroundColor: theme.colors.primary,
   },
   inactiveDot: {
-    backgroundColor: '#F5F5DC', // Beige color for inactive dots
+    backgroundColor: theme.colors.border,
   },
   nextButton: {
     width: '80%',
     paddingVertical: 15,
-    backgroundColor: '#007AFF', // A shade of blue for the button
+    backgroundColor: theme.colors.primary,
     borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',

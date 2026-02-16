@@ -7,18 +7,20 @@ import {
   TouchableOpacity,
   Alert,
   StyleSheet,
-  StatusBar,
   PermissionsAndroid,
   Platform,
   ScrollView,
   Modal,
   TouchableWithoutFeedback,
   TextInput,
-  ActivityIndicator
+  ActivityIndicator,
+  Image
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 import DefaultSmsPrompt from './DefaultSmsPrompt';
+import ProfilePhotoModal from '../components/ProfilePhotoModal';
+import { useTheme } from "../context/ThemeContext";
 
 const getAvatarColor = (address) => {
   const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
@@ -30,6 +32,9 @@ const CATEGORIES = ['All', 'Family', 'Official', 'Important'];
 
 export default function ChatsList() {
   const navigation = useNavigation();
+  const { theme, toggleTheme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
+
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
   const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
@@ -45,6 +50,8 @@ export default function ChatsList() {
   const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState(null);
+  const [isPhotoModalVisible, setIsPhotoModalVisible] = useState(false);
   // Mock Category Map (In a real app, this would be persisted)
   const [categoryMap, setCategoryMap] = useState({});
 
@@ -104,8 +111,26 @@ export default function ChatsList() {
 
   useEffect(() => {
     checkDefaultSmsApp();
-    loadSmsMessages();
+    initializeData();
+    loadProfilePhoto();
   }, []);
+
+  const initializeData = async () => {
+    await SmsController.prefetchContacts();
+    await loadSmsMessages();
+  };
+
+  const loadProfilePhoto = async () => {
+    const uri = await SmsController.getProfilePhoto();
+    if (uri) {
+      setProfilePhoto(uri);
+    }
+  };
+
+  const handleImageSelected = async (uri) => {
+    setProfilePhoto(uri);
+    await SmsController.saveProfilePhoto(uri);
+  };
 
   const refreshSmsData = async () => {
     setSmsLoaded(false);
@@ -201,14 +226,13 @@ export default function ChatsList() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-
       {/* Enhanced Header */}
       <View style={styles.header}>
         {isSearchVisible ? (
           <TextInput
             style={styles.searchInput}
             placeholder="Search messages..."
+            placeholderTextColor={theme.colors.placeholder}
             value={searchText}
             onChangeText={setSearchText}
             autoFocus
@@ -234,7 +258,11 @@ export default function ChatsList() {
 
           <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
             <View style={styles.profileAvatar}>
-              <Text style={styles.profileAvatarText}>👤</Text>
+              {profilePhoto ? (
+                <Image source={{ uri: profilePhoto }} style={styles.profileImage} />
+              ) : (
+                <Text style={styles.profileAvatarText}>👤</Text>
+              )}
             </View>
           </TouchableOpacity>
         </View>
@@ -271,7 +299,7 @@ export default function ChatsList() {
           }
         }}
         onEndReachedThreshold={0.5}
-        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#0000ff" style={{ marginVertical: 20 }} /> : null}
+        ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 20 }} /> : null}
       />
 
       {/* Profile Overflow Menu */}
@@ -281,17 +309,36 @@ export default function ChatsList() {
         animationType="fade"
         onRequestClose={() => setIsProfileMenuVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
-          <View style={styles.modalOverlay}>
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setIsProfileMenuVisible(false)}
+        >
+          <TouchableWithoutFeedback>
             <View style={styles.menuContainer}>
+              <TouchableOpacity style={styles.menuItem} onPress={toggleTheme}>
+                <Text style={styles.menuText}>{theme.dark ? "Switch to Light Mode" : "Switch to Dark Mode"}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  setIsPhotoModalVisible(true);
+                }}
+              >
+                <Text style={styles.menuText}>Change Profile Photo</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
                 <Text style={styles.menuText}>Settings</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Recycle Bin</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Edit Categories</Text>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('ContactUs');
+                }}
+              >
+                <Text style={styles.menuText}>Contact Us</Text>
               </TouchableOpacity>
               <View style={styles.divider} />
               <TouchableOpacity
@@ -304,8 +351,8 @@ export default function ChatsList() {
                 <Text style={[styles.menuText, { color: '#dc3545' }]}>Logout</Text>
               </TouchableOpacity>
             </View>
-          </View>
-        </TouchableWithoutFeedback>
+          </TouchableWithoutFeedback>
+        </TouchableOpacity>
       </Modal>
 
       {/* Floating Action Button */}
@@ -325,19 +372,25 @@ export default function ChatsList() {
           Alert.alert('Success', 'App is now your default SMS app!');
         }}
       />
+
+      <ProfilePhotoModal
+        visible={isPhotoModalVisible}
+        onClose={() => setIsPhotoModalVisible(false)}
+        onImageSelected={handleImageSelected}
+      />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.headerBackground,
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 0,
@@ -346,7 +399,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#1a1a1a',
+    color: theme.colors.text,
     flex: 1,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
   },
@@ -357,7 +410,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 18,
-    color: '#333',
+    color: theme.colors.text,
     paddingVertical: 0,
   },
   iconButton: {
@@ -366,7 +419,7 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 20,
-    color: '#333',
+    color: theme.colors.iconColor,
   },
   profileButton: {
     marginLeft: 12,
@@ -375,21 +428,27 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: theme.colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#e1e4e8',
+    borderColor: theme.colors.border,
+    overflow: 'hidden',
+  },
+  profileImage: {
+    width: 36,
+    height: 36,
   },
   profileAvatarText: {
     fontSize: 18,
+    color: theme.colors.text,
   },
 
   // Category Bar
   categoryBarContainer: {
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f2f5',
+    borderBottomColor: theme.colors.secondary,
   },
   categoryScrollView: {
     paddingHorizontal: 20,
@@ -398,17 +457,17 @@ const styles = StyleSheet.create({
   categoryPill: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: theme.colors.secondary,
     borderRadius: 20,
     marginRight: 8,
   },
   categoryPillActive: {
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
   },
   categoryText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#65676b',
+    color: theme.colors.textSecondary,
   },
   categoryTextActive: {
     color: '#ffffff',
@@ -417,14 +476,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#f0f2f5',
+    backgroundColor: theme.colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
   },
   addCategoryText: {
     fontSize: 20,
-    color: '#65676b',
+    color: theme.colors.textSecondary,
     fontWeight: '300',
   },
 
@@ -434,7 +493,7 @@ const styles = StyleSheet.create({
   chatItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.card,
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
@@ -458,12 +517,12 @@ const styles = StyleSheet.create({
   contactName: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#1a1a1a',
+    color: theme.colors.text,
     marginBottom: 4,
   },
   lastMessage: {
     fontSize: 15,
-    color: '#65676b',
+    color: theme.colors.textSecondary,
   },
   timeContainer: {
     alignItems: 'flex-end',
@@ -471,11 +530,11 @@ const styles = StyleSheet.create({
   },
   timeText: {
     fontSize: 13,
-    color: '#8a8d91',
+    color: theme.colors.textSecondary,
     marginBottom: 6,
   },
   unreadBadge: {
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -496,7 +555,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
@@ -514,13 +573,13 @@ const styles = StyleSheet.create({
   // Modal / Menu
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: theme.colors.modalOverlay,
   },
   menuContainer: {
     position: 'absolute',
     top: 60,
     right: 20,
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.menuBackground,
     borderRadius: 12,
     elevation: 5,
     shadowColor: '#000',
@@ -537,12 +596,12 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.text,
     fontWeight: '500',
   },
   divider: {
     height: 1,
-    backgroundColor: '#eee',
+    backgroundColor: theme.colors.divider,
     marginVertical: 4,
   },
 });

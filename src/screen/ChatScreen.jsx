@@ -30,6 +30,7 @@ import {
 import { useNavigation, useRoute } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import SmsController from '../../Controller/SmsController';
+import { useTheme } from "../context/ThemeContext";
 
 // In-memory cache for chat messages
 const chatCache = {};
@@ -38,6 +39,8 @@ export default function ChatScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const { contactId, name } = route.params || {};
+  const { theme } = useTheme();
+  const styles = useMemo(() => getStyles(theme), [theme]);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -290,7 +293,6 @@ export default function ChatScreen() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -315,8 +317,8 @@ export default function ChatScreen() {
             />
           ) : (
             <View style={styles.headerInfo}>
-              <Text style={styles.headerName}>{name}</Text>
-              <Text style={[styles.headerStatus, { color: isOnline ? '#28a745' : '#999' }]}>
+              <Text style={styles.headerName}>{SmsController.getContactName(contactId) || name}</Text>
+              <Text style={[styles.headerStatus, { color: isOnline ? theme.colors.success : theme.colors.textSecondary }]}>
                 {isOnline ? 'Online' : 'Offline'}
               </Text>
             </View>
@@ -356,7 +358,7 @@ export default function ChatScreen() {
             }
           }}
           scrollEventThrottle={16}
-          ListHeaderComponent={loadingMore ? <ActivityIndicator size="small" color="#0000ff" style={{ marginVertical: 10 }} /> : null}
+          ListHeaderComponent={loadingMore ? <ActivityIndicator size="small" color={theme.colors.primary} style={{ marginVertical: 10 }} /> : null}
         />
 
         <View style={[styles.inputContainer, Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }]}>
@@ -369,7 +371,7 @@ export default function ChatScreen() {
               value={input}
               onChangeText={setInput}
               placeholder="Message"
-              placeholderTextColor="#5f6368"
+              placeholderTextColor={theme.colors.placeholder}
               style={styles.textInput}
               multiline
               maxLength={1000}
@@ -405,8 +407,12 @@ export default function ChatScreen() {
           animationType="fade"
           onRequestClose={() => setIsProfileMenuVisible(false)}
         >
-          <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
-            <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setIsProfileMenuVisible(false)}
+          >
+            <TouchableWithoutFeedback>
               <View style={styles.menuContainer}>
                 <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
                   <Text style={styles.menuText}>Settings</Text>
@@ -418,8 +424,8 @@ export default function ChatScreen() {
                   <Text style={styles.menuText}>Block Contact</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
+            </TouchableWithoutFeedback>
+          </TouchableOpacity>
         </Modal>
 
         {/* Message Action Menu */}
@@ -429,8 +435,12 @@ export default function ChatScreen() {
           animationType="fade"
           onRequestClose={() => setMessageMenuVisible(false)}
         >
-          <TouchableWithoutFeedback onPress={() => setMessageMenuVisible(false)}>
-            <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setMessageMenuVisible(false)}
+          >
+            <TouchableWithoutFeedback>
               <View style={styles.messageActionMenu}>
                 {/* Reactions */}
                 <View style={styles.reactionsRow}>
@@ -485,8 +495,8 @@ export default function ChatScreen() {
                   <Text style={[styles.actionText, { color: '#f44336' }]}>Delete</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableWithoutFeedback>
+            </TouchableWithoutFeedback>
+          </TouchableOpacity>
         </Modal>
 
       </KeyboardAvoidingView>
@@ -494,10 +504,10 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const getStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: theme.colors.background,
   },
   keyboardContainer: {
     flex: 1,
@@ -505,7 +515,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff', // Changed to white for modern look
+    backgroundColor: theme.colors.headerBackground,
     paddingHorizontal: 16,
     paddingVertical: 12,
     elevation: 4,
@@ -520,7 +530,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     fontSize: 24,
-    color: '#333',
+    color: theme.colors.iconColor,
     fontWeight: '300',
   },
   headerInfo: {
@@ -529,11 +539,11 @@ const styles = StyleSheet.create({
   headerName: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#333',
+    color: theme.colors.text,
   },
   headerStatus: {
     fontSize: 12,
-    color: '#28a745', // Green for online
+    color: theme.colors.success,
     marginTop: 2,
   },
   headerActions: {
@@ -543,7 +553,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.text,
     paddingVertical: 4,
   },
   iconButton: {
@@ -555,8 +565,8 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   iconText: {
-    fontSize: 22, // Bigger icons
-    color: '#555',
+    fontSize: 22,
+    color: theme.colors.iconColor,
   },
 
   messagesList: {
@@ -577,12 +587,12 @@ const styles = StyleSheet.create({
   },
   myMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#2563eb',
+    backgroundColor: theme.colors.myMessage,
     borderBottomRightRadius: 4,
   },
   otherMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.otherMessage,
     borderBottomLeftRadius: 4,
     elevation: 1,
     shadowColor: '#000',
@@ -595,10 +605,10 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   myMessageText: {
-    color: '#ffffff',
+    color: theme.colors.myMessageText,
   },
   otherMessageText: {
-    color: '#212529',
+    color: theme.colors.otherMessageText,
   },
   timeContainer: {
     flexDirection: 'row',
@@ -609,10 +619,10 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   myTimeText: {
-    color: '#bfdbfe',
+    color: 'rgba(255,255,255,0.7)',
   },
   otherTimeText: {
-    color: '#adb5bd',
+    color: theme.colors.textSecondary,
   },
   statusIconContainer: {
     marginLeft: 4,
@@ -625,7 +635,7 @@ const styles = StyleSheet.create({
     color: '#4fc3f7',
   },
   checkSent: {
-    color: '#bfdbfe',
+    color: 'rgba(255,255,255,0.7)',
   },
   doubleCheck: {
     flexDirection: 'row',
@@ -640,7 +650,7 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    backgroundColor: '#ffffff',
+    backgroundColor: theme.colors.headerBackground,
     paddingHorizontal: 12,
     paddingVertical: 8,
     paddingBottom: Platform.OS === 'ios' ? 8 : 12,
@@ -657,7 +667,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
-    color: '#202124',
+    color: theme.colors.inputText,
     maxHeight: 120,
     minHeight: 48,
     textAlignVertical: 'center',
@@ -677,12 +687,12 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
   },
   sendButtonActive: {
-    backgroundColor: '#1a73e8',
+    backgroundColor: theme.colors.primary,
     elevation: 6,
     shadowOpacity: 0.25,
   },
   sendButtonInactive: {
-    backgroundColor: '#dadce0',
+    backgroundColor: theme.colors.secondary,
     elevation: 1,
     shadowOpacity: 0.1,
   },
@@ -694,7 +704,7 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   sendButtonTextInactive: {
-    color: '#9aa0a6',
+    color: theme.colors.textSecondary,
   },
   attachButton: {
     width: 40,
@@ -707,12 +717,12 @@ const styles = StyleSheet.create({
   },
   attachButtonText: {
     fontSize: 24,
-    color: '#5f6368',
+    color: theme.colors.textSecondary,
     fontWeight: '300',
   },
   textInputContainer: {
     flex: 1,
-    backgroundColor: '#f1f3f4',
+    backgroundColor: theme.colors.inputBackground,
     borderRadius: 24,
     marginRight: 8,
     paddingHorizontal: 4,
@@ -721,13 +731,13 @@ const styles = StyleSheet.create({
   // Modal / Menu
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.2)',
+    backgroundColor: theme.colors.modalOverlay,
   },
   menuContainer: {
     position: 'absolute',
     top: 60,
     right: 20,
-    backgroundColor: 'white',
+    backgroundColor: theme.colors.menuBackground,
     borderRadius: 12,
     elevation: 5,
     shadowColor: '#000',
@@ -744,7 +754,7 @@ const styles = StyleSheet.create({
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
+    color: theme.colors.text,
     fontWeight: '500',
   },
 
@@ -754,7 +764,7 @@ const styles = StyleSheet.create({
     bottom: 100,
     left: 20,
     right: 20,
-    backgroundColor: '#2a2a2a',
+    backgroundColor: '#2a2a2a', // Keep dark for actions
     borderRadius: 16,
     padding: 12,
     elevation: 10,
@@ -796,7 +806,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: -8,
     right: 8,
-    backgroundColor: '#fff',
+    backgroundColor: theme.colors.card,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 2,
@@ -806,7 +816,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: theme.colors.border,
   },
   reactionBadgeEmoji: {
     fontSize: 16,
