@@ -14,11 +14,20 @@ import {
   Modal,
   TouchableWithoutFeedback,
   TextInput,
-  ActivityIndicator
+  ActivityIndicator,
+  Animated
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 import DefaultSmsPrompt from './DefaultSmsPrompt';
+import { useTheme } from '../context/ThemeContext';
+import { Switch } from 'react-native';
+import ScalePressable from '../components/animations/ScalePressable';
+import SlideInList from '../components/animations/SlideInList';
+import FadeInView from '../components/animations/FadeInView';
+import { Swipeable } from 'react-native-gesture-handler';
+// Lucide Icons
+import { Search, RotateCcw, User, MoreVertical, Plus, Sun, Moon, LogOut, Settings, HelpCircle, Archive, CheckSquare, Edit, Trash2 } from 'lucide-react-native';
 
 const getAvatarColor = (address) => {
   const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
@@ -26,9 +35,9 @@ const getAvatarColor = (address) => {
   return colors[index];
 };
 
-const CATEGORIES = ['All', 'Family', 'Official', 'Important'];
 
 export default function ChatsList() {
+  const { theme, toggleTheme } = useTheme();
   const navigation = useNavigation();
   const [contacts, setContacts] = useState([]);
   const [readContacts, setReadContacts] = useState(new Set());
@@ -41,12 +50,18 @@ export default function ChatsList() {
   const [loadingMore, setLoadingMore] = useState(false);
 
   // UI States
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
-  const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
+  // Collections State
+  const [collections, setCollections] = useState(['All', 'Family', 'Official', 'Important']);
+  const [selectedCategory, setSelectedCategory] = useState('All');
   // Mock Category Map (In a real app, this would be persisted)
   const [categoryMap, setCategoryMap] = useState({});
+  const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState('');
+
+  // UI Visibility States
+  const [isSearchVisible, setIsSearchVisible] = useState(false);
+  const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
 
   const requestSmsPermissions = async () => {
     try {
@@ -148,6 +163,14 @@ export default function ChatsList() {
     }
   };
 
+  const handleAddCollection = () => {
+    if (newCollectionName.trim()) {
+      setCollections([...collections, newCollectionName.trim()]);
+      setNewCollectionName('');
+      setIsAddCollectionVisible(false);
+    }
+  };
+
   // Filter Logic
   const filteredContacts = useMemo(() => {
     let result = contacts;
@@ -169,96 +192,132 @@ export default function ChatsList() {
     return result;
   }, [contacts, selectedCategory, categoryMap, searchText]);
 
+  const renderRightActions = (progress, dragX, item) => {
+    const scale = dragX.interpolate({
+      inputRange: [-100, 0],
+      outputRange: [1, 0],
+      extrapolate: 'clamp',
+    });
+
+    return (
+      <TouchableOpacity
+        style={styles.archiveAction}
+        onPress={() => {
+          Alert.alert("Archived", `${item.name} has been archived.`);
+          // In a real app, update state here to remove/move the item
+        }}
+      >
+        <Animated.View style={{ transform: [{ scale }] }}>
+          <Archive size={24} color="#FFF" />
+          <Text style={styles.actionText}>Archive</Text>
+        </Animated.View>
+      </TouchableOpacity>
+    );
+  };
+
   const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.chatItem}
-      onPress={() => {
-        markAsRead(item.id);
-        navigation.navigate("Chat", { contactId: item.id, name: item.name });
-      }}
-    >
-      <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
-        <Text style={styles.avatarText}>{item.avatar}</Text>
-      </View>
+    <Swipeable renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}>
+      <ScalePressable
+        style={[styles.chatItem, { backgroundColor: theme.background }]}
+        onPress={() => {
+          markAsRead(item.id);
+          navigation.navigate("Chat", { contactId: item.id, name: item.name });
+        }}
+      >
+        <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
+          <Text style={styles.avatarText}>{item.avatar}</Text>
+        </View>
 
-      <View style={styles.chatContent}>
-        <Text style={styles.contactName}>{item.name}</Text>
-        <Text style={styles.lastMessage} numberOfLines={1}>
-          {item.lastMessage}
-        </Text>
-      </View>
+        <View style={styles.chatContent}>
+          <Text style={[styles.contactName, { color: theme.text }]}>{item.name}</Text>
+          <Text style={[styles.lastMessage, { color: theme.textSecondary }]} numberOfLines={1}>
+            {item.lastMessage}
+          </Text>
+        </View>
 
-      <View style={styles.timeContainer}>
-        <Text style={styles.timeText}>{item.time}</Text>
-        {item.unread > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{item.unread}</Text>
-          </View>
-        )}
-      </View>
-    </TouchableOpacity>
+        <View style={styles.timeContainer}>
+          <Text style={[styles.timeText, { color: theme.textSecondary }]}>{item.time}</Text>
+          {item.unread > 0 && (
+            <View style={[styles.unreadBadge, { backgroundColor: theme.primary }]}>
+              <Text style={[styles.unreadText, { color: theme.onPrimary }]}>{item.unread}</Text>
+            </View>
+          )}
+        </View>
+      </ScalePressable>
+    </Swipeable>
   );
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
 
       {/* Enhanced Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
         {isSearchVisible ? (
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: theme.text }]}
             placeholder="Search messages..."
+            placeholderTextColor={theme.textSecondary}
             value={searchText}
             onChangeText={setSearchText}
             autoFocus
             onBlur={() => !searchText && setIsSearchVisible(false)}
           />
         ) : (
-          <Text style={styles.headerTitle}>Messages</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Messages</Text>
         )}
 
         <View style={styles.headerActions}>
           {!isSearchVisible && (
-            <TouchableOpacity style={styles.iconButton} onPress={() => setIsSearchVisible(true)}>
-              <Text style={styles.iconText}>🔍</Text>
+            <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
+              <Search size={22} color={theme.text} />
             </TouchableOpacity>
           )}
 
           <TouchableOpacity
-            style={styles.iconButton}
+            style={[styles.iconButton, { marginLeft: 12 }]}
             onPress={refreshSmsData}
           >
-            <Text style={styles.iconText}>↻</Text>
+            <RotateCcw size={22} color={theme.text} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.profileButton} onPress={() => setIsProfileMenuVisible(true)}>
-            <View style={styles.profileAvatar}>
-              <Text style={styles.profileAvatarText}>👤</Text>
+            <View style={[styles.profileAvatar, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              <User size={20} color={theme.text} />
             </View>
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Category Bar */}
-      <View style={styles.categoryBarContainer}>
+      {/* Collections Bar */}
+      <View style={[styles.categoryBarContainer, { borderBottomColor: theme.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScrollView}>
-          {CATEGORIES.map(cat => (
+          {collections.map(cat => (
             <TouchableOpacity
               key={cat}
-              style={[styles.categoryPill, selectedCategory === cat && styles.categoryPillActive]}
+              style={[
+                styles.categoryPill,
+                { backgroundColor: selectedCategory === cat ? theme.primary : theme.surface },
+                selectedCategory === cat && styles.categoryPillActive
+              ]}
               onPress={() => setSelectedCategory(cat)}
             >
-              <Text style={[styles.categoryText, selectedCategory === cat && styles.categoryTextActive]}>{cat}</Text>
+              <Text style={[
+                styles.categoryText,
+                { color: selectedCategory === cat ? theme.onPrimary : theme.textSecondary }
+              ]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-          <TouchableOpacity style={styles.addCategoryButton}>
-            <Text style={styles.addCategoryText}>+</Text>
+          <TouchableOpacity
+            style={[styles.addCategoryButton, { backgroundColor: theme.surface }]}
+            onPress={() => setIsAddCollectionVisible(true)}
+          >
+            <Plus size={20} color={theme.textSecondary} />
           </TouchableOpacity>
         </ScrollView>
       </View>
 
-      <FlatList
+      <SlideInList
         data={filteredContacts}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
@@ -283,17 +342,100 @@ export default function ChatsList() {
       >
         <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
           <View style={styles.modalOverlay}>
-            <View style={styles.menuContainer}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Settings</Text>
+            <View style={[styles.menuContainer, { backgroundColor: theme.background, shadowColor: theme.mode === 'dark' ? '#fff' : '#000' }]}>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('YourProfile');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <User size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Your Profile</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Recycle Bin</Text>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('Archived');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Archive size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Archived</Text>
               </TouchableOpacity>
+
               <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                <Text style={styles.menuText}>Edit Categories</Text>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <CheckSquare size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Mark All as Read</Text>
               </TouchableOpacity>
-              <View style={styles.divider} />
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Edit size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Edit Categories</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Trash2 size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Recycle Bin</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('Settings');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <Settings size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Settings</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('HelpandFeedback');
+                }}
+              >
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <HelpCircle size={18} color={theme.text} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.text }]}>Help & Feedback</Text>
+              </TouchableOpacity>
+
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+              <View style={[styles.menuItem, { justifyContent: 'space-between' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                    {theme.mode === 'light' ? <Sun size={18} color={theme.text} /> : <Moon size={18} color={theme.text} />}
+                  </View>
+                  <Text style={[styles.menuText, { color: theme.text }]}>Dark Mode</Text>
+                </View>
+                <Switch
+                  value={theme.mode === 'dark'}
+                  onValueChange={toggleTheme}
+                  trackColor={{ false: "#767577", true: theme.primary }}
+                  thumbColor={theme.mode === 'dark' ? "#f4f3f4" : "#f4f3f4"}
+                />
+              </View>
+
+              <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
               <TouchableOpacity
                 style={styles.menuItem}
                 onPress={() => {
@@ -301,21 +443,53 @@ export default function ChatsList() {
                   navigation.replace('InfoOne');
                 }}
               >
-                <Text style={[styles.menuText, { color: '#dc3545' }]}>Logout</Text>
+                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
+                  <LogOut size={18} color={theme.danger} />
+                </View>
+                <Text style={[styles.menuText, { color: theme.danger }]}>Logout</Text>
               </TouchableOpacity>
             </View>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
 
+      {/* Add Collection Modal */}
+      <Modal
+        visible={isAddCollectionVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsAddCollectionVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.menuContainer, { backgroundColor: theme.background, alignSelf: 'center', top: '30%', minWidth: 250 }]}>
+            <Text style={[styles.menuText, { marginBottom: 12, color: theme.text }]}>New Collection</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: theme.border, borderRadius: 8, padding: 8, color: theme.text, marginBottom: 16 }}
+              placeholder="Collection Name"
+              placeholderTextColor={theme.textSecondary}
+              value={newCollectionName}
+              onChangeText={setNewCollectionName}
+              autoFocus
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <TouchableOpacity onPress={() => setIsAddCollectionVisible(false)} style={{ marginRight: 16 }}>
+                <Text style={{ color: theme.textSecondary, fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleAddCollection}>
+                <Text style={{ color: theme.primary, fontWeight: '600' }}>Add</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Floating Action Button */}
-      <TouchableOpacity
+      <ScalePressable
         style={styles.fab}
         onPress={() => navigation.navigate('NewChat')}
-        activeOpacity={0.8}
       >
-        <Text style={styles.fabText}>✎</Text>
-      </TouchableOpacity>
+        <Plus size={32} color="#ffffff" />
+      </ScalePressable>
 
       <DefaultSmsPrompt
         visible={showDefaultPrompt}
@@ -366,6 +540,21 @@ const styles = StyleSheet.create({
   },
   iconText: {
     fontSize: 20,
+    color: '#333',
+  },
+  searchIconButton: {
+    marginLeft: 12,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: '#f0f2f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e1e4e8',
+  },
+  searchIconText: {
+    fontSize: 18,
     color: '#333',
   },
   profileButton: {
@@ -531,18 +720,31 @@ const styles = StyleSheet.create({
     minWidth: 180,
   },
   menuItem: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderRadius: 8,
+  },
+  menuIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#f0f2f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  menuIcon: {
+    fontSize: 16,
+    color: '#555',
   },
   menuText: {
     fontSize: 16,
-    color: '#333',
     fontWeight: '500',
   },
   divider: {
     height: 1,
-    backgroundColor: '#eee',
     marginVertical: 4,
   },
 });

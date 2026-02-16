@@ -1,0 +1,31 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Nexalert Backend",
+  "homepage": "https://github.com/Suhan-Ganesh/Nexalert#readme",
+  "bugs": {
+    "url": "https://github.com/Suhan-Ganesh/Nexalert/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Suhan-Ganesh/Nexalert.git"
+  },
+  "license": "MIT",
+  "author": "samudra",
+  "type": "module",
+  "main": "server",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.55.0",
+    "chalk": "^5.4.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10",
+    "socket.io": "^4.8.3",
+    "twilio": "^5.8.0"
+  }
+}

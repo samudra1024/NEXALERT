@@ -55,6 +55,100 @@ class SmsController {
     }
   }
 
+  // Helper to get avatar color
+  static getAvatarColor(address) {
+    const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
+    const index = address.charCodeAt(0) % colors.length;
+    return colors[index];
+  }
+
+  // Get conversations (grouped by address) with pagination
+  static async getConversations(page = 1, limit = 20) {
+    try {
+      const messages = await this.fetchSmsMessages();
+
+      // Group by address
+      const conversationsMap = {};
+
+      // Sort messages by date descending first to ensuring we capture the latest
+      messages.sort((a, b) => b.date - a.date);
+
+      messages.forEach(msg => {
+        const address = msg.address;
+
+        if (!conversationsMap[address]) {
+          conversationsMap[address] = {
+            id: address,
+            name: address, // In a real app, resolve contact name here
+            avatar: address[0] || '?',
+            avatarColor: this.getAvatarColor(address),
+            lastMessage: msg.body,
+            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            rawTime: msg.date,
+            unread: 0,
+          };
+        }
+
+        // Count unread (type 1 is received)
+        if (msg.read === 0 && msg.type === 1) {
+          conversationsMap[address].unread++;
+        }
+      });
+
+      // Convert to array
+      const sortedConversations = Object.values(conversationsMap);
+      // Ensure conversations are sorted by latest message
+      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
+
+      // Pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedConversations = sortedConversations.slice(startIndex, endIndex);
+
+      return {
+        conversations: paginatedConversations,
+        hasMore: endIndex < sortedConversations.length,
+        page: page
+      };
+
+    } catch (error) {
+      console.error('Error getting conversations:', error);
+      throw error;
+    }
+  }
+
+  // Get messages for a specific chat
+  static async getChatMessages(contactId, page = 1, limit = 20) {
+    try {
+      const messages = await this.fetchSmsMessages();
+
+      const chatMessages = messages.filter(msg => msg.address === contactId);
+
+      // Sort by date descending (newest first)
+      chatMessages.sort((a, b) => b.date - a.date); // or b.date - a.date depending on UI needs. ChatScreen seems to expect newest first.
+
+      // Pagination
+      const startIndex = (page - 1) * limit;
+      const endIndex = startIndex + limit;
+      const paginatedMessages = chatMessages.slice(startIndex, endIndex);
+
+      return {
+        messages: paginatedMessages,
+        hasMore: endIndex < chatMessages.length,
+        page: page
+      };
+    } catch (error) {
+      console.error('Error getting chat messages:', error);
+      throw error;
+    }
+  }
+
+  // Get starred messages
+  static async getStarredMessages() {
+    // Mock implementation as native module generally doesn't support starring
+    return [];
+  }
+
   // Send SMS
   static async sendSms(phoneNumber, message) {
     try {
@@ -148,188 +242,17 @@ class SmsController {
     }
   }
 
-  // Fetch formatted chat messages with pagination
-  static async getChatMessages(contactId, page = 1, pageSize = 50) {
+  // Delete SMS messages
+  static async deleteSms(ids) {
     try {
-      const smsMessages = await this.fetchSmsMessages();
-
-      // Filter and sort all messages for this contact (Oldest to Newest)
-      const allMessages = smsMessages
-        .filter(sms => sms.address === contactId)
-        .sort((a, b) => a.date - b.date);
-
-      // Calculate pagination indices
-      const totalMessages = allMessages.length;
-
-      // We want the last N messages based on the page number.
-      // Page 1: Last 50 messages. (total - 50) to (total)
-      // Page 2: Previous 50. (total - 100) to (total - 50)
-
-      let start = totalMessages - (page * pageSize);
-      let end = totalMessages - ((page - 1) * pageSize);
-
-      // Adjust boundaries
-      if (end > totalMessages) end = totalMessages;
-      if (start < 0) start = 0;
-      if (end < 0) end = 0;
-
-      // Slice the messages for the current page
-      // Note: slice(start, end) where end is exclusive.
-      // If start >= end (e.g. both 0), we get empty array.
-      const pagedMessages = allMessages.slice(start, end);
-
-      // Format messages
-      const formattedMessages = pagedMessages.map((sms) => ({
-        id: sms.id,
-        sender: parseInt(sms.type) === 2 ? 'me' : sms.address,
-        text: sms.body,
-        time: new Date(parseInt(sms.date)).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        date: parseInt(sms.date),
-        status: parseInt(sms.type) === 2 ? (parseInt(sms.read) === 1 ? 'seen' : parseInt(sms.status) === 0 ? 'sent' : 'pending') : null,
-        reaction: null
-      }));
-
-      return {
-        messages: formattedMessages,
-        hasMore: start > 0,
-        page: page
-      };
-
+      const count = await SmsModule.deleteSms(ids);
+      return count;
     } catch (error) {
-      console.error('Error getting chat messages:', error);
-      throw error;
-    }
-  }
-
-
-  // Fetch formatted chat messages with pagination
-  static async getConversations(page = 1, pageSize = 50) {
-    try {
-      const messages = await this.fetchSmsMessages();
-
-      // Group messages by contact
-      const contactsMap = {};
-
-      messages.forEach(msg => {
-        const address = msg.address;
-        if (!contactsMap[address]) {
-          contactsMap[address] = {
-            id: address,
-            name: address,
-            messages: [],
-            avatar: address.charAt(0).toUpperCase(),
-            // avatarColor logic needs to be moved or duplicated if we want to do it here, 
-            // but for now let's just pass the basic data and let frontend handle color if needed, 
-            // OR keep it consistent. Let's add the util function here or inside the map.
-            // For simplicity, we'll keep color logic in frontend or simple hash here.
-            avatarColor: '#2563eb' // Placeholder or we can move the color logic here.
-          };
-        }
-        contactsMap[address].messages.push(msg);
-      });
-
-      // Process each contact to get last message and sort
-      const contactsList = Object.values(contactsMap).map(contact => {
-        const sortedMessages = contact.messages.sort((a, b) => b.date - a.date);
-        const latestMessage = sortedMessages[0];
-
-        // Calculate unread count for this contact
-        const unreadMessages = contact.messages.filter(msg => parseInt(msg.type) === 1 && parseInt(msg.read) === 0);
-
-        return {
-          id: contact.id,
-          name: contact.name,
-          avatar: contact.avatar,
-          avatarColor: contact.avatarColor,
-          lastMessage: latestMessage.body,
-          time: new Date(latestMessage.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          date: latestMessage.date, // for sorting
-          unread: unreadMessages.length,
-          messageCount: contact.messages.length
-        };
-      }).sort((a, b) => b.date - a.date); // Sort by latest message date (Newest first)
-
-      // Pagination
-      const totalConversations = contactsList.length;
-      const start = (page - 1) * pageSize;
-      const end = start + pageSize;
-
-      const pagedConversations = contactsList.slice(start, end);
-
-      return {
-        conversations: pagedConversations,
-        hasMore: end < totalConversations,
-        page: page
-      };
-
-    } catch (error) {
-      console.error('Error fetching conversations:', error);
-      throw error;
-    }
-  }
-
-  // Delete SMS
-  static async deleteMessage(messageId) {
-    try {
-      if (SmsModule.deleteSms) {
-        await SmsModule.deleteSms(messageId);
-      } else {
-        console.warn("Delete SMS not implemented in native module");
-        // Assuming success for UI if not critical, or throw error
-      }
-      return true;
-    } catch (error) {
-      console.error('Error deleting message:', error);
-      throw error;
-    }
-  }
-
-  // Star Message (Local Only)
-  static async toggleStarMessage(messageId) {
-    try {
-      const stored = await AsyncStorage.getItem('starred_messages');
-      let starred = stored ? JSON.parse(stored) : [];
-
-      let isStarred = false;
-      if (starred.includes(messageId)) {
-        starred = starred.filter(id => id !== messageId);
-        isStarred = false;
-      } else {
-        starred.push(messageId);
-        isStarred = true;
-      }
-
-      await AsyncStorage.setItem('starred_messages', JSON.stringify(starred));
-      return isStarred;
-    } catch (error) {
-      console.error('Error toggling star:', error);
-      return false;
-    }
-  }
-
-  static async getStarredMessages() {
-    try {
-      const stored = await AsyncStorage.getItem('starred_messages');
-      return stored ? JSON.parse(stored) : [];
-    } catch (error) {
-      return [];
-    }
-  }
-
-  // Forward Message
-  static async forwardMessage(text) {
-    try {
-      await Share.share({
-        message: text,
-      });
-      return true;
-    } catch (error) {
-      console.error('Error forwarding message:', error);
+      console.error('Error deleting SMS:', error);
       throw error;
     }
   }
 
 }
-
 
 export default SmsController;
