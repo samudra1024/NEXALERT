@@ -30,4 +30,4 @@ const FadeInView = ({ children, delay = 0, duration = 500, style }) => {
     );
 };
 
-export default FadeInView;
+export default React.memo(FadeInView);

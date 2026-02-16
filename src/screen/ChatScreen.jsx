@@ -1,5 +1,5 @@
 // screens/ChatScreen.js
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -28,7 +28,7 @@ import { useSettings } from '../context/SettingsContext';
 // Re-import Animated to ensure we have the correct one for gestures if needed, 
 // though we usually use react-native-reanimated for this.
 // Assuming Animated from react-native is already imported, we might need Reanimated for smoother zoom.
-import { useSharedValue, useAnimatedStyle, withSpring, FadeInUp, FadeInRight, FadeInLeft, useAnimatedGestureHandler } from 'react-native-reanimated';
+import { useSharedValue, useAnimatedStyle, withSpring, useAnimatedGestureHandler } from 'react-native-reanimated';
 import Reanimated from 'react-native-reanimated';
 import ScalePressable from '../components/animations/ScalePressable';
 import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Image as ImageIcon } from 'lucide-react-native';
@@ -96,8 +96,9 @@ export default function ChatScreen() {
 
     // Check cache first if not refreshing and page 1
     if (!refresh && nextPage === 1 && chatCache[contactId]) {
+      // Load from cache immediately if available
       setMessages(chatCache[contactId].messages);
-      // We proceed to background refresh starred status or just rely on cache
+      return; // Skip reloading from DB
     }
 
     if (nextPage > 1) {
@@ -118,7 +119,6 @@ export default function ChatScreen() {
       }));
 
       const processedNew = processMessages(result.messages);
-      // Sort ascending (oldest first) for non-inverted FlatList
       processedNew.sort((a, b) => a.date - b.date);
 
       if (nextPage === 1) {
@@ -361,28 +361,13 @@ export default function ChatScreen() {
   };
 
   const renderMessage = React.useCallback(({ item, index }) => {
-    const previousMessage = messages[index + 1]; // Messages are sorted desc, so previous is +1
-    // Actually, messages in FlatList usually sorted ascending for chat?
-    // Let's check loadSmsMessages: .sort((a, b) => a.date - b.date);
-    // So messages[0] is oldest.
-    // Wait, typical chat flatlist with inverted={false} means index 0 is top (oldest).
-    // Let's assume index 0 is oldest.
-    // Then previous message is index - 1.
-
-    // In loadSmsMessages: 100:         .sort((a, b) => a.date - b.date); 
-    // This sorts ascending (oldest first).
-    // So for item at index `i`, previous message is `i - 1`.
-
     const prevMsg = index > 0 ? messages[index - 1] : null;
     const showDate = shouldShowDateSeparator(item, prevMsg);
 
     return (
       <View>
         {showDate && renderDateSeparator(item.date)}
-        <Reanimated.View
-          entering={item.sender === "me" ? FadeInRight.springify() : FadeInLeft.springify()}
-          style={{ marginBottom: 4 }}
-        >
+        <View style={{ marginBottom: 4 }}>
           <TouchableWithoutFeedback
             onLongPress={() => handleLongPress(item)}
             onPress={() => handleMessagePress(item)}
@@ -394,7 +379,7 @@ export default function ChatScreen() {
                 item.sender === "me"
                   ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
                   : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }],
-                selectedMessages.includes(item.id) && { backgroundColor: theme.primary + '80', borderColor: theme.primary, borderWidth: 1 } // Highlight selected
+                selectedMessages.includes(item.id) && { backgroundColor: theme.primary + '80', borderColor: theme.primary, borderWidth: 1 }
               ]}>
               <Text style={[
                 styles.messageText,
@@ -426,18 +411,30 @@ export default function ChatScreen() {
               </Text>
               {selectedMessages.includes(item.id) && <Check size={14} color={theme.text} style={{ marginLeft: 8 }} />}
             </View>
-
           </TouchableWithoutFeedback>
-        </Reanimated.View>
-      </View >
+        </View>
+      </View>
     );
   }, [theme, handleLongPress, handleMessagePress, selectedMessages, messages]);
 
-  const scrollToBottom = () => {
+  const msgKeyExtractor = useCallback((item) => item.id, []);
+
+  const scrollToBottom = useCallback(() => {
     if (flatListRef.current && messages.length > 0) {
-      flatListRef.current.scrollToEnd({ animated: true });
+      flatListRef.current.scrollToEnd({ animated: false });
     }
-  };
+  }, [messages.length]);
+
+  // Only scroll to bottom once after initial load
+  const hasScrolledToBottom = useRef(false);
+  useEffect(() => {
+    if (messages.length > 0 && !hasScrolledToBottom.current) {
+      setTimeout(() => {
+        scrollToBottom();
+        hasScrolledToBottom.current = true;
+      }, 100);
+    }
+  }, [messages.length, scrollToBottom]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -530,14 +527,17 @@ export default function ChatScreen() {
             <FlatList
               ref={flatListRef}
               data={messages}
-              keyExtractor={(item) => item.id}
+              keyExtractor={msgKeyExtractor}
               renderItem={renderMessage}
               extraData={selectedMessages}
               style={styles.messagesList}
               contentContainerStyle={styles.messagesContainer}
               showsVerticalScrollIndicator={false}
-              onContentSizeChange={scrollToBottom}
-              onLayout={scrollToBottom}
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={20}
+              windowSize={15}
+              initialNumToRender={20}
+              updateCellsBatchingPeriod={50}
             />
           </Reanimated.View>
         </PinchGestureHandler>

@@ -37,4 +37,4 @@ const ScalePressable = ({ children, style, onPress, scaleTo = 0.95 }) => {
     );
 };
 
-export default ScalePressable;
+export default React.memo(ScalePressable);

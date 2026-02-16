@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
+import { CardStyleInterpolators } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import AuthScreen from './src/screen/AuthScreen';
@@ -31,20 +32,8 @@ export default function App() {
               screenOptions={{
                 headerShown: false,
                 gestureEnabled: true,
-                cardStyleInterpolator: ({ current, layouts }) => {
-                  return {
-                    cardStyle: {
-                      transform: [
-                        {
-                          translateX: current.progress.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [layouts.screen.width, 0],
-                          }),
-                        },
-                      ],
-                    },
-                  };
-                },
+                cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+                detachInactiveScreens: true,
               }}
             >
 

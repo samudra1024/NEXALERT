@@ -1,5 +1,5 @@
 // screens/ChatsList.js
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -162,30 +162,23 @@ export default function ChatsList() {
     }
   };
 
-  const markAsRead = async (contactId) => {
+  const markAsRead = useCallback(async (contactId) => {
     try {
-      console.log('Marking as read:', contactId);
-
-      // Add to local read set immediately
       setReadContacts(prev => {
         const newSet = new Set(prev);
         newSet.add(contactId);
-        console.log('Updated read contacts:', Array.from(newSet));
         return newSet;
       });
 
-      // Try to mark as read in database (but don't depend on it)
       try {
-        const result = await SmsController.markAsRead(contactId);
-        console.log('Database mark as read result:', result);
+        await SmsController.markAsRead(contactId);
       } catch (dbError) {
         console.warn('Database mark as read failed:', dbError);
       }
-
     } catch (error) {
       console.error('Error in markAsRead:', error);
     }
-  };
+  }, []);
 
   const handleAddCollection = async () => {
     if (newCollectionName.trim()) {
@@ -242,7 +235,7 @@ export default function ChatsList() {
     return result;
   }, [contacts, selectedCategory, categoryMap, searchText]);
 
-  const renderRightActions = (progress, dragX, item) => {
+  const renderRightActions = useCallback((progress, dragX, item) => {
     const scale = dragX.interpolate({
       inputRange: [-100, 0],
       outputRange: [1, 0],
@@ -275,9 +268,9 @@ export default function ChatsList() {
         </Animated.View>
       </TouchableOpacity>
     );
-  };
+  }, []);
 
-  const renderLeftActions = (progress, dragX, item) => {
+  const renderLeftActions = useCallback((progress, dragX, item) => {
     const scale = dragX.interpolate({
       inputRange: [0, 100],
       outputRange: [0, 1],
@@ -297,12 +290,14 @@ export default function ChatsList() {
         </Animated.View>
       </TouchableOpacity>
     );
-  };
+  }, []);
 
-  const renderItem = ({ item }) => (
+  const renderItem = useCallback(({ item }) => (
     <Swipeable
       renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}
       renderLeftActions={(progress, dragX) => renderLeftActions(progress, dragX, item)}
+      overshootRight={false}
+      overshootLeft={false}
     >
       <ScalePressable
         style={[styles.chatItem, { backgroundColor: theme.background }]}
@@ -332,7 +327,15 @@ export default function ChatsList() {
         </View>
       </ScalePressable>
     </Swipeable>
-  );
+  ), [theme, markAsRead, navigation, renderRightActions, renderLeftActions]);
+
+  const keyExtractor = useCallback((item) => item.id, []);
+  const flatListContentStyle = useMemo(() => ({ paddingBottom: 100 }), []);
+  const handleEndReached = useCallback(() => {
+    if (hasMore && !loadingMore && !searchText && selectedCategory === 'All') {
+      loadSmsMessages(false, page + 1);
+    }
+  }, [hasMore, loadingMore, searchText, selectedCategory, page]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -408,16 +411,12 @@ export default function ChatsList() {
 
       <SlideInList
         data={filteredContacts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
         renderItem={renderItem}
         showsVerticalScrollIndicator={true}
         style={styles.flatList}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        onEndReached={() => {
-          if (hasMore && !loadingMore && !searchText && selectedCategory === 'All') {
-            loadSmsMessages(false, page + 1);
-          }
-        }}
+        contentContainerStyle={flatListContentStyle}
+        onEndReached={handleEndReached}
         onEndReachedThreshold={0.5}
         ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#0000ff" style={{ marginVertical: 20 }} /> : null}
       />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -11,7 +11,6 @@ import {
     Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import Animated, { FadeInDown, Layout } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
 import SmsController from '../../Controller/SmsController';
 import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react-native';
@@ -80,10 +79,8 @@ export default function Archived() {
         );
     };
 
-    const renderItem = ({ item, index }) => (
-        <Animated.View
-            entering={FadeInDown.delay(index * 80).duration(400).springify()}
-            layout={Layout.springify()}
+    const renderItem = useCallback(({ item }) => (
+        <View
             style={[styles.itemContainer, { backgroundColor: theme.surface }]}
         >
             <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
@@ -117,8 +114,8 @@ export default function Archived() {
                     <Trash2 size={18} color={theme.danger || '#ef4444'} />
                 </TouchableOpacity>
             </View>
-        </Animated.View>
-    );
+        </View>
+    ), [theme, handleRestore, handleDelete]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.background }]}>
@@ -139,16 +136,13 @@ export default function Archived() {
                         <ActivityIndicator size="large" color={theme.primary} />
                     </View>
                 ) : archivedItems.length === 0 ? (
-                    <Animated.View
-                        entering={FadeInDown.delay(200).duration(500)}
-                        style={styles.emptyState}
-                    >
+                    <View style={styles.emptyState}>
                         <Text style={{ fontSize: 48, marginBottom: 16 }}>🗄️</Text>
                         <Text style={[styles.emptyTitle, { color: theme.text }]}>No archived chats</Text>
                         <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
                             Swipe left on a chat to archive it
                         </Text>
-                    </Animated.View>
+                    </View>
                 ) : (
                     <FlatList
                         data={archivedItems}
@@ -156,6 +150,10 @@ export default function Archived() {
                         renderItem={renderItem}
                         contentContainerStyle={styles.listContainer}
                         showsVerticalScrollIndicator={false}
+                        removeClippedSubviews={true}
+                        maxToRenderPerBatch={15}
+                        windowSize={10}
+                        initialNumToRender={15}
                     />
                 )}
             </View>
