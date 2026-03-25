@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 # MODEL I/O FUNCTIONS
 # =============================================================================
 
-def save_model(model, vectorizer, threshold: float, filepath: str = None):
+def save_model(model, vectorizer, threshold: float, filepath: str = None, use_bundle: bool = True):
     """
     Save trained model, vectorizer, and threshold to disk.
     
@@ -36,36 +36,53 @@ def save_model(model, vectorizer, threshold: float, filepath: str = None):
         vectorizer: Fitted TF-IDF vectorizer
         threshold: Optimal decision threshold
         filepath: Directory path to save artifacts
+        use_bundle: If True, save as single model_bundle.pkl; if False, save separate files
     """
     filepath = filepath or ARTIFACTS_DIR
     
     logger.info(f"Saving model artifacts to {filepath}")
     
-    # Save vectorizer
-    vectorizer_path = filepath / "vectorizer.pkl"
-    with open(vectorizer_path, 'wb') as f:
-        pickle.dump(vectorizer, f)
-    logger.info(f"✓ Saved vectorizer to {vectorizer_path}")
-    
-    # Save model
-    model_path = filepath / "model.pkl"
-    with open(model_path, 'wb') as f:
-        pickle.dump(model, f)
-    logger.info(f"✓ Saved model to {model_path}")
-    
-    # Save threshold
-    threshold_path = filepath / "threshold.json"
-    with open(threshold_path, 'w') as f:
-        json.dump({'threshold': threshold}, f)
-    logger.info(f"✓ Saved threshold to {threshold_path}")
+    if use_bundle:
+        # Save as single bundle containing all components
+        bundle = {
+            'model': model,
+            'vectorizer': vectorizer,
+            'threshold': threshold
+        }
+        
+        bundle_path = filepath / "model_bundle.pkl"
+        with open(bundle_path, 'wb') as f:
+            pickle.dump(bundle, f)
+        logger.info(f"✓ Saved model bundle to {bundle_path}")
+        logger.info(f"   Contents: model, vectorizer, threshold ({threshold:.4f})")
+    else:
+        # Legacy: Save separate files
+        # Save vectorizer
+        vectorizer_path = filepath / "vectorizer.pkl"
+        with open(vectorizer_path, 'wb') as f:
+            pickle.dump(vectorizer, f)
+        logger.info(f"✓ Saved vectorizer to {vectorizer_path}")
+        
+        # Save model
+        model_path = filepath / "model.pkl"
+        with open(model_path, 'wb') as f:
+            pickle.dump(model, f)
+        logger.info(f"✓ Saved model to {model_path}")
+        
+        # Save threshold
+        threshold_path = filepath / "threshold.json"
+        with open(threshold_path, 'w') as f:
+            json.dump({'threshold': threshold}, f)
+        logger.info(f"✓ Saved threshold to {threshold_path}")
 
 
-def load_model(filepath: str = None) -> Tuple[Any, Any, float]:
+def load_model(filepath: str = None, use_bundle: bool = True) -> Tuple[Any, Any, float]:
     """
     Load trained model, vectorizer, and threshold from disk.
     
     Args:
         filepath: Directory path containing artifacts
+        use_bundle: If True, load from model_bundle.pkl; if False, load separate files
         
     Returns:
         Tuple of (model, vectorizer, threshold)
@@ -74,24 +91,38 @@ def load_model(filepath: str = None) -> Tuple[Any, Any, float]:
     
     logger.info(f"Loading model artifacts from {filepath}")
     
-    # Load vectorizer
-    vectorizer_path = filepath / "vectorizer.pkl"
-    with open(vectorizer_path, 'rb') as f:
-        vectorizer = pickle.load(f)
-    logger.info(f"✓ Loaded vectorizer from {vectorizer_path}")
-    
-    # Load model
-    model_path = filepath / "model.pkl"
-    with open(model_path, 'rb') as f:
-        model = pickle.load(f)
-    logger.info(f"✓ Loaded model from {model_path}")
-    
-    # Load threshold
-    threshold_path = filepath / "threshold.json"
-    with open(threshold_path, 'r') as f:
-        threshold_data = json.load(f)
-    threshold = threshold_data['threshold']
-    logger.info(f"✓ Loaded threshold: {threshold:.3f}")
+    if use_bundle:
+        # Load from single bundle
+        bundle_path = filepath / "model_bundle.pkl"
+        with open(bundle_path, 'rb') as f:
+            bundle = pickle.load(f)
+        
+        model = bundle['model']
+        vectorizer = bundle['vectorizer']
+        threshold = bundle['threshold']
+        
+        logger.info(f"✓ Loaded model bundle from {bundle_path}")
+        logger.info(f"   Threshold: {threshold:.4f}")
+    else:
+        # Legacy: Load separate files
+        # Load vectorizer
+        vectorizer_path = filepath / "vectorizer.pkl"
+        with open(vectorizer_path, 'rb') as f:
+            vectorizer = pickle.load(f)
+        logger.info(f"✓ Loaded vectorizer from {vectorizer_path}")
+        
+        # Load model
+        model_path = filepath / "model.pkl"
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+        logger.info(f"✓ Loaded model from {model_path}")
+        
+        # Load threshold
+        threshold_path = filepath / "threshold.json"
+        with open(threshold_path, 'r') as f:
+            threshold_data = json.load(f)
+        threshold = threshold_data['threshold']
+        logger.info(f"✓ Loaded threshold: {threshold:.3f}")
     
     return model, vectorizer, threshold
 
@@ -291,7 +322,7 @@ class SpamDetector:
         """
         if self._model is None:
             logger.info("Initializing SpamDetector...")
-            self._model, self._vectorizer, self._threshold = load_model(filepath)
+            self._model, self._vectorizer, self._threshold = load_model(filepath, use_bundle=True)
             logger.info("✓ SpamDetector initialized successfully")
         else:
             logger.info("SpamDetector already initialized")

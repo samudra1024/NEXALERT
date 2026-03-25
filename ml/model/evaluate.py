@@ -90,7 +90,7 @@ def evaluate_on_test_set() -> dict:
     logger.info("STEP 2: LOADING TRAINED MODEL")
     logger.info("=" * 70)
     
-    model, vectorizer, threshold = load_model()
+    model, vectorizer, threshold = load_model(use_bundle=True)
     
     logger.info(f"\n✓ Model loaded successfully")
     logger.info(f"  Decision threshold: {threshold:.3f}")

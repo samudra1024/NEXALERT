@@ -119,11 +119,13 @@ def tune_threshold(
         })
         
         # Check if this is the best threshold
-        # Priority: Maximize recall, but maintain minimum precision
-        if recall > best_recall and precision >= min_precision:
-            best_threshold = current_thresh
-            best_recall = recall
-            best_precision = precision
+        # Priority: Maximize recall with precision >= min_precision
+        # Tie-breaker: Higher precision wins
+        if precision >= min_precision:
+            if recall > best_recall or (recall == best_recall and precision > best_precision):
+                best_threshold = current_thresh
+                best_recall = recall
+                best_precision = precision
     
     # Log all threshold results
     logger.info("Threshold Search Results:")
@@ -266,11 +268,10 @@ def train_model() -> dict:
     logger.info("STEP 5: SAVING MODEL ARTIFACTS")
     logger.info("=" * 70)
     
-    save_model(model, vectorizer, optimal_threshold)
+    save_model(model, vectorizer, optimal_threshold, use_bundle=True)
     
     logger.info(f"\n✅ Model artifacts saved to: {ARTIFACTS_DIR}")
-    logger.info("   - vectorizer.pkl (TF-IDF vectorizer)")
-    logger.info("   - model.pkl (Logistic Regression)")
+    logger.info("   - model_bundle.pkl (contains model, vectorizer, threshold)")
     logger.info("   - threshold.json (Optimal decision threshold)")
     
     # ==========================================================================
