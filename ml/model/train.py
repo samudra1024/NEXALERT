@@ -90,24 +90,21 @@ def tune_threshold(
     X_val_tfidf = vectorizer.transform(X_val)
     y_proba = model.predict_proba(X_val_tfidf)[:, 1]  # Probability of spam
     
-    # Threshold search parameters
-    min_thresh = THRESHOLD_CONFIG['min_threshold']
-    max_thresh = THRESHOLD_CONFIG['max_threshold']
-    step = THRESHOLD_CONFIG['step']
+    # Threshold search parameters from config
+    thresholds = THRESHOLD_CONFIG['thresholds']
     min_precision = THRESHOLD_CONFIG['min_precision']
     
     best_threshold = 0.5  # Default
     best_recall = 0.0
     best_precision = 0.0
     
-    logger.info(f"\nSearching thresholds from {min_thresh} to {max_thresh} (step={step})")
+    logger.info(f"\nSearching {len(thresholds)} thresholds in range [{min(thresholds):.3f}, {max(thresholds):.3f}]")
     logger.info(f"Minimum precision constraint: {min_precision}\n")
     
     threshold_results = []
     
-    # Search thresholds
-    current_thresh = min_thresh
-    while current_thresh <= max_thresh + 1e-6:  # Small epsilon for float comparison
+    # Search through predefined thresholds
+    for current_thresh in thresholds:
         # Apply threshold
         y_pred = (y_proba >= current_thresh).astype(int)
         
@@ -127,8 +124,6 @@ def tune_threshold(
             best_threshold = current_thresh
             best_recall = recall
             best_precision = precision
-        
-        current_thresh += step
     
     # Log all threshold results
     logger.info("Threshold Search Results:")

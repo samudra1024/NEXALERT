@@ -72,11 +72,12 @@ LR_CONFIG = {
 # =============================================================================
 # THRESHOLD TUNING CONFIGURATION
 # =============================================================================
+import numpy as np
+
 THRESHOLD_CONFIG = {
-    'min_threshold': 0.1,          # Minimum threshold to try
-    'max_threshold': 0.9,          # Maximum threshold to try
-    'step': 0.05,                  # Step size for threshold search
-    'min_precision': 0.3,          # Minimum acceptable precision (avoid complete collapse)
+    # Generate 10 evenly spaced thresholds between 0.25 and 0.40
+    'thresholds': np.linspace(0.25, 0.40, 10).tolist(),  # [0.25, 0.267, 0.283, ..., 0.40]
+    'min_precision': 0.80,          # Minimum acceptable precision constraint
 }
 
 # =============================================================================
