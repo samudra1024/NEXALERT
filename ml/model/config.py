@@ -99,6 +99,41 @@ ONNX_CONFIG = {
 }
 
 # =============================================================================
+# STAGE 2: HAM MESSAGE CATEGORIZATION CONFIGURATION
+# =============================================================================
+# TF-IDF Vectorizer for Stage 2 (HAM classifier)
+STAGE2_TFIDF_CONFIG = {
+    'max_features': 15000,       # Larger vocabulary for fine-grained classification
+    'ngram_range': (1, 2),       # Unigrams and bigrams
+    'min_df': 2,                 # Ignore terms appearing in fewer than 2 documents
+    'max_df': 0.9,               # Ignore terms appearing in more than 90% of documents
+    'sublinear_tf': True,        # Apply sublinear tf scaling (1 + log(tf))
+}
+
+# LightGBM Classifier for Stage 2
+STAGE2_LGBM_CONFIG = {
+    'objective': 'multiclass',   # Multi-class classification
+    'num_class': 6,              # 6 HAM categories
+    'n_estimators': 300,         # Number of boosting rounds
+    'learning_rate': 0.05,       # Step size shrinkage
+    'num_leaves': 31,            # Max tree leaves
+    'random_state': RANDOM_SEED, # Reproducibility
+}
+
+# Class weights for handling imbalanced HAM categories
+STAGE2_CLASS_WEIGHTS = {
+    'personal': 1.0,
+    'unknown': 1.2,
+    'banking': 1.5,
+    'promotional': 1.5,
+    'otp': 2.0,
+    'subscription': 2.0,
+}
+
+# HAM categories list
+HAM_CATEGORIES = ['personal', 'banking', 'otp', 'subscription', 'promotional', 'unknown']
+
+# =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================
 LOG_LEVEL = 'INFO'

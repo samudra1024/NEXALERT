@@ -46,8 +46,16 @@ def load_data(dataset_path: str = None) -> pd.DataFrame:
             "Please place your dataset.csv in the data/ directory."
         )
     
-    # Load CSV - assume columns are 'label' and 'text'
-    df = pd.read_csv(dataset_path)
+    # Load CSV with robust encoding handling
+    # Note: Dataset may have additional columns (e.g., 'category' for Model 2)
+    # Model 1 only uses 'text' and 'label' columns - all others are ignored
+    try:
+        df = pd.read_csv(dataset_path, encoding="utf-8")
+        logger.info("Dataset loaded with UTF-8 encoding")
+    except UnicodeDecodeError:
+        logger.info("UTF-8 decoding failed, falling back to latin1 encoding")
+        df = pd.read_csv(dataset_path, encoding="latin1")
+        logger.info("Dataset loaded with latin1 encoding (Windows-1252 compatible)")
     
     # Validate required columns
     required_columns = {'label', 'text'}
@@ -140,6 +148,8 @@ def split_data(
     logger.info("Splitting data into train/val/test (70/15/15)...")
     
     # Separate features and labels
+    # IMPORTANT: Only use 'text' and 'label' columns - ignore all others (e.g., 'category')
+    # This ensures Model 1 remains independent from Model 2's categorization task
     X = df['text'].values
     y = df['label'].values
     
