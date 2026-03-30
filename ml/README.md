@@ -1,20 +1,508 @@
-# SMS Spam Detection ML System
+# Nexalert - Two-Stage SMS Spam Detection & Categorization
 
-A production-grade, end-to-end machine learning system for SMS spam detection (binary classification: spam vs ham) optimized for **high recall** and **on-device mobile inference**.
+A production-grade, end-to-end machine learning system for SMS spam detection and intelligent message categorization using a **two-stage ML pipeline** optimized for high recall and on-device deployment.
 
 ---
 
-## 🎯 System Overview
+## 🎯 Project Overview
 
-### Objective
-- **Binary Classification**: Spam (1) vs Ham (0)
-- **Primary Goal**: Maximize recall for spam class (minimize missed spam)
-- **Deployment Target**: Mobile devices (offline, on-device inference)
+### What is Nexalert?
 
-### Model Constraints
-- **Algorithm**: TF-IDF Vectorizer + Logistic Regression
-- **No deep learning or transformers** (keep it lightweight and fast)
-- **Optimized for**: High spam recall with acceptable precision
+Nexalert is an advanced ML-powered system that automatically detects and categorizes SMS messages to help users manage their inbox efficiently and securely.
+
+### Problem Solved
+
+1. **Spam Detection**: Identifies unwanted/spam messages (Stage 1)
+2. **Smart Categorization**: Organizes legitimate messages into meaningful categories (Stage 2)
+   - Personal, Banking, OTP, Subscription, Promotional, Unknown
+
+### High-Level Pipeline
+
+```
+Incoming SMS
+    ↓
+Stage 1: Spam vs HAM
+    ├─→ SPAM → Flag as spam, store separately
+    └─→ HAM → Continue to Stage 2
+            ↓
+        Stage 2: Category Prediction
+            ↓
+        Organize into category (Personal/Banking/OTP/etc.)
+```
+
+---
+
+## ✨ Features
+
+### Core Capabilities
+
+- ✅ **Two-Stage ML Pipeline**
+  - Stage 1: Binary spam detection (TF-IDF + Logistic Regression)
+  - Stage 2: Multi-class categorization (TF-IDF + LightGBM)
+
+- ✅ **High Spam Recall**
+  - Optimized to catch maximum spam messages
+  - Custom threshold tuning for business metrics
+
+- ✅ **6-Category HAM Classification**
+  - Personal, Banking, OTP, Subscription, Promotional, Unknown
+  - 94%+ accuracy on test set
+
+- ✅ **Privacy-Focused Design**
+  - On-device inference ready
+  - No cloud dependencies required
+
+- ✅ **Production-Ready**
+  - Clean modular architecture
+  - Comprehensive logging and metrics
+  - Config-driven hyperparameters
+
+---
+
+## 🏗️ Architecture Overview
+
+### Two-Stage Pipeline
+
+#### Stage 1: Spam Detection
+- **Input**: Raw SMS text
+- **Model**: TF-IDF Vectorizer + Logistic Regression
+- **Output**: SPAM or HAM classification
+- **Goal**: Maximize spam recall (catch all spam)
+- **Artifact**: `stage1/artifacts/model_bundle.pkl`
+
+#### Stage 2: HAM Categorization
+- **Input**: Messages classified as HAM by Stage 1
+- **Model**: TF-IDF Vectorizer + LightGBM Classifier
+- **Output**: One of 6 categories (Personal, Banking, OTP, etc.)
+- **Goal**: Accurate multi-class classification
+- **Artifact**: `stage2/artifacts/stage2_model.pkl`
+
+### Inference Flow
+
+```
+User receives SMS
+    ↓
+Stage 1 Model
+    ↓
+Is SPAM?
+    ├─ YES → Store in Spam folder
+    │         Notify user (optional)
+    │
+    └─ NO → Stage 2 Model
+            ↓
+        Predict category
+            ↓
+        Store in category folder
+        (Personal/Banking/OTP/etc.)
+```
+
+---
+
+## 🛠️ Tech Stack
+
+### Core Technologies
+
+- **Python 3.8+**
+- **scikit-learn** - ML framework for Stage 1
+- **LightGBM** - Gradient boosting for Stage 2
+- **pandas** - Data manipulation
+- **NumPy** - Numerical operations
+
+### ML Components
+
+- **TF-IDF Vectorizer** - Text feature extraction
+- **Logistic Regression** - Binary classification (Stage 1)
+- **LightGBM Classifier** - Multi-class classification (Stage 2)
+
+### Optional (Mobile Deployment)
+
+- **ONNX** - Cross-platform model format
+- **skl2onnx** - sklearn to ONNX conversion
+- **onnxruntime** - Mobile inference engine
+
+---
+
+## 📊 Dataset & Data Management
+
+### Dataset Structure
+
+The dataset contains three columns:
+
+```csv
+text,label,category
+"Congratulations! You've won $1000...",spam,
+"Hey, are we still on for lunch?",ham,personal
+"Your bank account balance is $500",ham,banking
+"Your OTP is 123456",ham,otp
+```
+
+**Columns:**
+- `text`: SMS message content
+- `label`: `spam` or `ham`
+- `category`: Message category (only for HAM messages)
+
+### Data Usage
+
+**Stage 1 (Spam Detection):**
+- Uses **full dataset** (both spam and ham)
+- Trains on `text` → `label` mapping
+- Stratified split: 70% train, 15% val, 15% test
+
+**Stage 2 (HAM Categorization):**
+- Uses **HAM-only subset** (filtered from full dataset)
+- Trains on `text` → `category` mapping
+- Stratified split: 80% train, 20% test
+
+### Data Preprocessing
+
+Minimal preprocessing to preserve spam signals:
+- Lowercase conversion only
+- Preserves: numbers, URLs, symbols, emojis (all potential spam indicators)
+
+---
+
+## 🤖 Model Details
+
+### Stage 1: Spam Detection
+
+**Architecture:**
+```
+Text → TF-IDF (5000 features) → Logistic Regression → Spam Probability
+```
+
+**Configuration:**
+- TF-IDF: max_features=5000, ngram_range=(1,2), stop_words='english'
+- Logistic Regression: class_weight='balanced', max_iter=1000
+- Decision Threshold: Tuned on validation set (typically ~0.2-0.3)
+
+**Performance:**
+- Spam Recall: ~94-98% (primary metric)
+- Overall Accuracy: ~95%
+
+### Stage 2: HAM Categorization
+
+**Architecture:**
+```
+Text → TF-IDF (15000 features) → LightGBM → Category Prediction
+```
+
+**Configuration:**
+- TF-IDF: max_features=15000, ngram_range=(1,2), sublinear_tf=True
+- LightGBM: n_estimators=300, learning_rate=0.05, num_leaves=31
+- Class Weights: Balanced (handles imbalanced categories)
+
+**Categories & Performance:**
+| Category | F1-Score | Support |
+|----------|----------|--------|
+| Personal | 0.95 | 6,106 |
+| Banking | 0.99 | 1,405 |
+| OTP | 1.00 | 1,165 |
+| Subscription | 0.96 | 1,124 |
+| Promotional | 1.00 | 1,000 |
+| Unknown | 0.31 | 534 |
+
+**Overall Accuracy: 94.35%**
+
+---
+
+## 📁 Project Structure
+
+```
+ml/
+│
+├── stage1/                          # Spam Detection Model
+│   ├── train.py                     # Training script
+│   ├── evaluate.py                  # Evaluation script
+│   ├── export_onnx.py               # ONNX export
+│   ├── test_inference.py            # Inference tests
+│   └── artifacts/                   # Stage 1 models
+│       └── model_bundle.pkl
+│
+├── stage2/                          # HAM Categorization Model
+│   ├── train.py                     # Training script
+│   ├── test_data.py                 # Data verification
+│   └── artifacts/                   # Stage 2 models
+│       └── stage2_model.pkl
+│
+├── docs/                            # Documentation
+│   ├── BUNDLE_QUICK_REF.md
+│   ├── STAGE2_QUICK_REF.md
+│   ├── PROJECT_RESTRUCTURING_SUMMARY.md
+│   └── [more docs...]
+│
+├── data/                            # Datasets
+│   └── dataset.csv
+│
+├── config.py                        # Shared configuration
+├── preprocess.py                    # Data preprocessing
+├── utils.py                         # Utility functions
+└── requirements.txt                 # Dependencies
+```
+
+---
+
+## 🚀 Local Setup & Training
+
+### 1. Installation
+
+```bash
+# Navigate to project root
+cd NexAlert/ml
+
+# Create virtual environment (Python 3.8+)
+python -m venv venv
+
+# Activate environment
+# Windows:
+venv\Scripts\activate
+# Linux/Mac:
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Prepare Dataset
+
+Place your dataset in `data/dataset.csv`:
+
+```csv
+text,label,category
+"FREE iPhone! Click here...",spam,
+"Mom, coming home at 6",ham,personal
+"Your OTP is 847291",ham,otp
+```
+
+**Requirements:**
+- CSV format with headers: `text`, `label`, `category`
+- Labels: `spam` or `ham` (case-insensitive)
+- Category: Only required for HAM messages
+
+### 3. Train Stage 1 (If Needed)
+
+```bash
+cd model/stage1
+python train.py
+```
+
+**What happens:**
+1. Loads and preprocesses data
+2. Splits into train/val/test (70/15/15)
+3. Fits TF-IDF on training set
+4. Trains Logistic Regression
+5. Tunes threshold on validation set
+6. Saves model to `stage1/artifacts/`
+
+### 4. Train Stage 2
+
+```bash
+cd model/stage2
+python train.py
+```
+
+**Expected Output:**
+```
+STAGE 2: HAM MESSAGE CATEGORIZATION - MODEL TRAINING
+✓ Total HAM messages: 11,332
+✓ Training samples: 9,065
+✓ Test samples: 2,267
+✓ Number of classes: 6
+✓ Test Accuracy: 0.9435 (94.35%)
+✓ Model saved: stage2/artifacts/stage2_model.pkl
+```
+
+### 5. Where Models Are Saved
+
+**Stage 1:**
+- `stage1/artifacts/model_bundle.pkl`
+
+**Stage 2:**
+- `stage2/artifacts/stage2_model.pkl`
+
+---
+
+## 💻 Usage
+
+### Basic Inference Flow
+
+```python
+from utils import SpamDetector, HamCategorizer
+
+# Initialize models
+spam_detector = SpamDetector()
+spam_detector.initialize()
+
+ham_categorizer = HamCategorizer()
+ham_categorizer.initialize()
+
+# Process incoming message
+message = "Your OTP is 123456"
+
+# Stage 1: Check if spam
+stage1_result = spam_detector.predict(message)
+
+if stage1_result['is_spam']:
+    print("🚨 SPAM detected!")
+else:
+    # Stage 2: Categorize HAM message
+    stage2_result = ham_categorizer.predict(message)
+    print(f"📁 Category: {stage2_result['category']}")
+    # Output: 📁 Category: otp
+```
+
+### Example Scenarios
+
+**Scenario 1: Spam Message**
+```python
+message = "Congratulations! You've won $1000!"
+# Stage 1 → SPAM
+# Action: Store in spam folder
+```
+
+**Scenario 2: Personal Message**
+```python
+message = "Hey, are we still on for lunch?"
+# Stage 1 → HAM
+# Stage 2 → personal
+# Action: Store in personal folder
+```
+
+**Scenario 3: OTP Message**
+```python
+message = "Your bank OTP is 847291. Valid for 5 min."
+# Stage 1 → HAM
+# Stage 2 → banking (or otp)
+# Action: Highlight as important
+```
+
+---
+
+## 📚 Documentation
+
+Detailed documentation is available in the `docs/` folder:
+
+### Quick References
+- `BUNDLE_QUICK_REF.md` - Model bundle reference
+- `STAGE2_QUICK_REF.md` - Stage 2 quick start
+- `FILE_STRUCTURE_QUICK_REF.md` - Project structure guide
+
+### Implementation Summaries
+- `STAGE2_IMPLEMENTATION_COMPLETE.md` - Stage 2 training details
+- `PROJECT_RESTRUCTURING_SUMMARY.md` - Architecture overview
+- `CATEGORY_COLUMN_HANDLING.md` - Data handling guide
+
+**Access Docs:**
+```bash
+cd ml/docs
+ls  # View all documentation files
+```
+
+---
+
+## 📄 License
+
+This project is provided as-is for educational and production use.
+
+---
+
+## 🔮 Future Improvements
+
+### Model Optimization
+- [ ] Hyperparameter tuning (GridSearchCV)
+- [ ] Feature selection to reduce dimensionality
+- [ ] Ensemble methods for better accuracy
+
+### On-Device Deployment
+- [ ] Convert Stage 1 to ONNX/TFLite
+- [ ] Convert Stage 2 to ONNX/TFLite
+- [ ] Mobile app integration (Android/iOS)
+- [ ] Optimize for mobile CPU/GPU
+
+### Feedback Loop & Retraining
+- [ ] Collect user corrections
+- [ ] Incremental learning pipeline
+- [ ] Scheduled retraining (weekly/monthly)
+- [ ] A/B testing framework
+
+### Advanced Features
+- [ ] Multi-language support
+- [ ] Custom user-defined categories
+- [ ] Real-time streaming inference
+- [ ] Model versioning and rollback
+
+---
+
+## 🧪 Testing
+
+### Run Tests
+
+```bash
+# Test Stage 1 inference
+cd model/stage1
+python test_inference.py
+
+# Test Stage 2 data
+cd model/stage2
+python test_data.py
+```
+
+### Expected Results
+
+**Stage 1 Test:**
+```
+SPAM DETECTION TEST
+✅ HAM (confidence: 98.23%) - "Hey, lunch tomorrow?"
+🚨 SPAM (confidence: 94.56%) - "FREE iPhone!"
+```
+
+**Stage 2 Test:**
+```
+HAM CATEGORIZATION TEST
+✅ Category: otp (confidence: 99.12%) - "Your OTP is 123456"
+✅ Category: personal (confidence: 95.34%) - "Coming home at 6"
+```
+
+---
+
+## 🤝 Contributing
+
+This is a production-grade system. Before making changes:
+
+1. ✅ Ensure all tests pass
+2. ✅ Update relevant documentation in `docs/`
+3. ✅ Follow existing code structure
+4. ✅ Test both Stage 1 and Stage 2 independently
+5. ✅ Verify no breaking changes to API
+
+---
+
+## 📞 Support & References
+
+### Code References
+- **Stage 1 Training**: `model/stage1/train.py`
+- **Stage 2 Training**: `model/stage2/train.py`
+- **Configuration**: `config.py`
+- **Utilities**: `utils.py`
+
+### External Resources
+- [Scikit-learn Documentation](https://scikit-learn.org/)
+- [LightGBM Documentation](https://lightgbm.readthedocs.io/)
+- [ONNX Documentation](https://onnx.ai/)
+- [SMS Spam Collection Dataset](https://archive.ics.uci.edu/ml/datasets/sms+spam+collection)
+
+---
+
+## 💡 Key Takeaways
+
+1. **Two-Stage Architecture**: Separates spam detection from categorization
+2. **High Recall Focus**: Prioritizes catching spam over avoiding false positives
+3. **Production-Ready**: Clean code, comprehensive logging, modular design
+4. **Privacy-First**: Designed for on-device deployment
+5. **Scalable**: Easy to add new categories or improve models independently
+
+---
+
+For questions or issues, please review the documentation in `docs/` first.
 
 ---
 
