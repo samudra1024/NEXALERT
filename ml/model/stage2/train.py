@@ -24,10 +24,7 @@ import lightgbm as lgb
 import pickle
 from pathlib import Path
 
-import sys
-sys.path.append('.')
-
-from config import (
+from ml.model.config import (
     DATASET_PATH,
     ARTIFACTS_DIR,
     RANDOM_SEED,

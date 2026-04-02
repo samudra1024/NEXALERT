@@ -6,9 +6,9 @@ Performs final evaluation on the held-out test set ONLY ONCE.
 import logging
 import numpy as np
 
-from config import DATASET_PATH, ARTIFACTS_DIR
-from preprocess import prepare_data, load_data, preprocess_text, encode_labels
-from utils import (
+from ml.model.config import DATASET_PATH, ARTIFACTS_DIR, TRAIN_SIZE, VAL_SIZE, TEST_SIZE, RANDOM_SEED
+from ml.model.preprocess import prepare_data, load_data, preprocess_text, encode_labels
+from ml.model.utils import (
     load_model,
     save_metrics,
     compute_metrics,
@@ -58,7 +58,6 @@ def evaluate_on_test_set() -> dict:
     
     # Split data to get test set (using same random seed as training)
     from sklearn.model_selection import train_test_split
-    from config import TRAIN_SIZE, VAL_SIZE, TEST_SIZE, RANDOM_SEED
     
     X = df['text'].values
     y = df['label'].values

@@ -1,6 +1,6 @@
 """Test the spam detector with sample messages."""
 
-from utils import SpamDetector
+from ml.model.utils import SpamDetector
 
 # Initialize detector
 detector = SpamDetector()

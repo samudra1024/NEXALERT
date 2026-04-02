@@ -6,17 +6,12 @@ Run this AFTER training the model.
 import logging
 import pickle
 from pathlib import Path
-import sys
-
 import numpy as np
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType, StringTensorType
 from sklearn.pipeline import Pipeline
 
-# Add parent directory to path
-sys.path.append('.')
-
-from config import ARTIFACTS_DIR, TFIDF_CONFIG
+from ml.model.config import ARTIFACTS_DIR, TFIDF_CONFIG
 
 # Setup logging
 logging.basicConfig(

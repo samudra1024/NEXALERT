@@ -8,7 +8,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 import logging
 
-from config import (
+from ml.model.config import (
     DATASET_PATH,
     PREPROCESSING_CONFIG,
     TRAIN_SIZE,

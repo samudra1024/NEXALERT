@@ -15,8 +15,8 @@ from sklearn.metrics import (
     confusion_matrix, classification_report
 )
 
-from config import ARTIFACTS_DIR, LABEL_DECODING, LOG_LEVEL, LOG_FORMAT
-from preprocess import preprocess_text
+from ml.model.config import ARTIFACTS_DIR, LABEL_DECODING, LOG_LEVEL, LOG_FORMAT
+from ml.model.preprocess import preprocess_text
 
 # Setup logging
 logging.basicConfig(level=LOG_LEVEL, format=LOG_FORMAT)

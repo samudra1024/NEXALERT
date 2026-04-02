@@ -9,18 +9,15 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import precision_score, recall_score
 
-import sys
-sys.path.append('.')
-
-from config import (
+from ml.model.config import (
     TFIDF_CONFIG,
     LR_CONFIG,
     THRESHOLD_CONFIG,
     RANDOM_SEED,
     ARTIFACTS_DIR,
 )
-from preprocess import prepare_data
-from utils import save_model, save_metrics, compute_metrics
+from ml.model.preprocess import prepare_data
+from ml.model.utils import save_model, save_metrics, compute_metrics
 
 # Setup logging
 logging.basicConfig(

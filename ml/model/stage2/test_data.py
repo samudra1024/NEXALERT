@@ -8,7 +8,7 @@ This script demonstrates:
 4. Pipeline works without errors
 """
 
-from preprocess import load_data, prepare_data
+from ml.model.preprocess import load_data, prepare_data
 import pandas as pd
 
 print("=" * 70)

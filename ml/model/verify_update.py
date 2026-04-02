@@ -9,7 +9,7 @@ print("=" * 70)
 
 # Test 1: Check if config has correct threshold settings
 print("\n✅ Test 1: Verifying THRESHOLD_CONFIG...")
-from config import THRESHOLD_CONFIG
+from ml.model.config import THRESHOLD_CONFIG
 
 assert 'thresholds' in THRESHOLD_CONFIG, "Missing 'thresholds' in config"
 assert 'min_precision' in THRESHOLD_CONFIG, "Missing 'min_precision' in config"
@@ -21,7 +21,7 @@ print(f"   ✓ Min precision: {THRESHOLD_CONFIG['min_precision']}")
 # Test 2: Verify save_model has use_bundle parameter
 print("\n✅ Test 2: Verifying save_model function signature...")
 import inspect
-from utils import save_model
+from ml.model.utils import save_model
 
 sig = inspect.signature(save_model)
 assert 'use_bundle' in sig.parameters, "save_model missing use_bundle parameter"
@@ -29,7 +29,7 @@ print(f"   ✓ save_model has use_bundle parameter")
 
 # Test 3: Verify load_model has use_bundle parameter
 print("\n✅ Test 3: Verifying load_model function signature...")
-from utils import load_model
+from ml.model.utils import load_model
 
 sig = inspect.signature(load_model)
 assert 'use_bundle' in sig.parameters, "load_model missing use_bundle parameter"
@@ -37,7 +37,7 @@ print(f"   ✓ load_model has use_bundle parameter")
 
 # Test 4: Verify SpamDetector uses bundles
 print("\n✅ Test 4: Verifying SpamDetector initialization...")
-from utils import SpamDetector
+from ml.model.utils import SpamDetector
 
 detector_class_code = inspect.getsource(SpamDetector.initialize)
 assert 'use_bundle=True' in detector_class_code, "SpamDetector not using bundles"
