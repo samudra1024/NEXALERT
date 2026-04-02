@@ -1,0 +1,169 @@
+# =============================================================================
+# DATA FILES
+# =============================================================================
+# Ignore all CSV files in data/ directory (datasets are user-specific)
+data/*.csv
+data/**/*.csv
+
+# =============================================================================
+# MODEL ARTIFACTS
+# =============================================================================
+# Ignore all pickle files (trained models, vectorizers)
+*.pkl
+model/artifacts/*.pkl
+model/artifacts/**/*.pkl
+
+# Ignore serialized models
+*.model
+model/artifacts/*.model
+
+# Ignore PyTorch models
+*.pt
+model/artifacts/*.pt
+*.pth
+model/artifacts/*.pth
+
+# Ignore HDF5 files (Keras/TensorFlow models)
+*.h5
+model/artifacts/*.h5
+*.hdf5
+model/artifacts/*.hdf5
+
+# Ignore ONNX models (optional - uncomment if you want to track these)
+# *.onnx
+# model/artifacts/*.onnx
+
+# =============================================================================
+# METRICS & LOGS
+# =============================================================================
+# Ignore metrics JSON files (regenerated on each evaluation)
+*.json
+!requirements.txt
+model/artifacts/metrics.json
+model/artifacts/threshold.json
+
+# Ignore log files
+*.log
+logs/
+**/logs/
+
+# =============================================================================
+# PYTHON CACHE & BYTECODE
+# =============================================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# =============================================================================
+# VIRTUAL ENVIRONMENTS
+# =============================================================================
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+ENV.bak/
+.venv
+.python-version
+
+# =============================================================================
+# IDE CONFIGURATION
+# =============================================================================
+# PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# VS Code
+.vscode/
+.settings/
+.project
+.classpath
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Spyder
+.spyderproject
+.spyproject
+
+# =============================================================================
+# TESTING & COVERAGE
+# =============================================================================
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# =============================================================================
+# OS FILES
+# =============================================================================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+*~
+
+# =============================================================================
+# TEMPORARY FILES
+# =============================================================================
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+tmp/
+temp/
+
+# =============================================================================
+# DOCUMENTATION BUILD
+# =============================================================================
+docs/_build/
+docs/build/
+site/
+
+# =============================================================================
+# MISC
+# =============================================================================
+.env
+.venv
+.flaskenv
+.ropeproject
+.mlstatics
