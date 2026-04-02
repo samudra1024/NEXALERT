@@ -18,6 +18,7 @@ def example_basic_inference():
         print("Install with: pip install onnxruntime")
         return
     
+    import pickle
     from ml.model.config import ARTIFACTS_DIR, HAM_CATEGORIES
     
     # Load model
@@ -29,6 +30,16 @@ def example_basic_inference():
         print(f"  python -m ml.model.stage2.export_onnx")
         return
     
+    # Load vectorizer (required for TF-IDF transformation)
+    vectorizer_path = ARTIFACTS_DIR / "stage2_vectorizer.pkl"
+    if not vectorizer_path.exists():
+        print(f"❌ ERROR: Vectorizer not found at {vectorizer_path}")
+        print(f"\nPlease ensure vectorizer was saved during export.")
+        return
+    
+    with open(vectorizer_path, 'rb') as f:
+        vectorizer = pickle.load(f)
+    
     sess = ort.InferenceSession(str(model_path))
     
     # Get input/output names
@@ -37,6 +48,8 @@ def example_basic_inference():
     
     print("=" * 70)
     print("STAGE 2 ONNX INFERENCE EXAMPLE")
+    print("=" * 70)
+    print("ℹ️  Note: Model expects TF-IDF float vectors (not raw text)")
     print("=" * 70)
     
     # Test messages
@@ -53,16 +66,28 @@ def example_basic_inference():
     
     # Run inference
     for text in test_messages:
-        # Prepare input (reshape for batch)
-        X = np.array([text]).reshape(-1, 1)
+        # Step 1: Apply TF-IDF transformation
+        tfidf_vector = vectorizer.transform([text])
         
-        # Get prediction
+        # Step 2: Convert to dense float32 array
+        X = tfidf_vector.toarray().astype(np.float32)
+        
+        # Step 3: Get prediction
         outputs = sess.run(None, {input_name: X})
-        prediction = outputs[0][0]
         
-        # Map to category
-        idx = int(prediction)
-        category = HAM_CATEGORIES[idx] if idx < len(HAM_CATEGORIES) else f"Unknown({idx})"
+        # ONNX returns two outputs: 'label' (string) and 'probabilities' (array)
+        # First output is typically the label
+        prediction_output = outputs[0][0]
+        
+        # Check if prediction is string (category name) or int (index)
+        if isinstance(prediction_output, str):
+            # Model returns category name directly
+            category = prediction_output
+            idx = HAM_CATEGORIES.index(category) if category in HAM_CATEGORIES else -1
+        else:
+            # Model returns index
+            idx = int(prediction_output)
+            category = HAM_CATEGORIES[idx] if idx < len(HAM_CATEGORIES) else f"Unknown({idx})"
         
         print(f"Text: '{text[:50]}...'")
         print(f"  → Predicted: {category} (index: {idx})")
@@ -80,6 +105,7 @@ def example_batch_inference():
         print("❌ onnxruntime not installed!")
         return
     
+    import pickle
     from ml.model.config import ARTIFACTS_DIR, HAM_CATEGORIES
     
     # Load model
@@ -90,6 +116,15 @@ def example_batch_inference():
         print(f"\nPlease run export first:")
         print(f"  python -m ml.model.stage2.export_onnx")
         return
+    
+    # Load vectorizer
+    vectorizer_path = ARTIFACTS_DIR / "stage2_vectorizer.pkl"
+    if not vectorizer_path.exists():
+        print(f"❌ ERROR: Vectorizer not found at {vectorizer_path}")
+        return
+    
+    with open(vectorizer_path, 'rb') as f:
+        vectorizer = pickle.load(f)
     
     sess = ort.InferenceSession(str(model_path))
     
@@ -108,17 +143,26 @@ def example_batch_inference():
     print("BATCH INFERENCE EXAMPLE")
     print("=" * 70)
     
-    # Prepare batch input
-    X = np.array(messages).reshape(-1, 1)
+    # Transform all messages to TF-IDF vectors
+    tfidf_vectors = vectorizer.transform(messages)
+    
+    # Convert to dense float32 array
+    X = tfidf_vectors.toarray().astype(np.float32)
     
     # Run batch inference
     outputs = sess.run(None, {input_name: X})
+    
+    # Handle both string and int predictions
     predictions = outputs[0].flatten()
     
     # Display results
     for msg, pred in zip(messages, predictions):
-        idx = int(pred)
-        category = HAM_CATEGORIES[idx] if idx < len(HAM_CATEGORIES) else f"Unknown({idx})"
+        if isinstance(pred, str):
+            category = pred
+            idx = HAM_CATEGORIES.index(category) if category in HAM_CATEGORIES else -1
+        else:
+            idx = int(pred)
+            category = HAM_CATEGORIES[idx] if idx < len(HAM_CATEGORIES) else f"Unknown({idx})"
         print(f"  {msg:<50} → {category}")
     
     print("=" * 70)
@@ -133,6 +177,7 @@ def example_with_probability_output():
         print("❌ onnxruntime not installed!")
         return
     
+    import pickle
     from ml.model.config import ARTIFACTS_DIR, HAM_CATEGORIES
     
     # Load model
@@ -144,6 +189,15 @@ def example_with_probability_output():
         print(f"  python -m ml.model.stage2.export_onnx")
         return
     
+    # Load vectorizer
+    vectorizer_path = ARTIFACTS_DIR / "stage2_vectorizer.pkl"
+    if not vectorizer_path.exists():
+        print(f"❌ ERROR: Vectorizer not found at {vectorizer_path}")
+        return
+    
+    with open(vectorizer_path, 'rb') as f:
+        vectorizer = pickle.load(f)
+    
     sess = ort.InferenceSession(str(model_path))
     
     input_name = sess.get_inputs()[0].name
@@ -154,7 +208,10 @@ def example_with_probability_output():
     print("=" * 70)
     
     text = "Your bank account has been credited with $1000"
-    X = np.array([text]).reshape(-1, 1)
+    
+    # Apply TF-IDF transformation
+    tfidf_vector = vectorizer.transform([text])
+    X = tfidf_vector.toarray().astype(np.float32)
     
     # Get all outputs
     outputs = sess.run(None, {input_name: X})
@@ -180,6 +237,7 @@ def example_mobile_deployment():
         print("❌ onnxruntime not installed!")
         return
     
+    import pickle
     from ml.model.config import ARTIFACTS_DIR, HAM_CATEGORIES
     
     # Configure session for mobile optimization
@@ -195,6 +253,15 @@ def example_mobile_deployment():
         print(f"  python -m ml.model.stage2.export_onnx")
         return
     
+    # Load vectorizer
+    vectorizer_path = ARTIFACTS_DIR / "stage2_vectorizer.pkl"
+    if not vectorizer_path.exists():
+        print(f"❌ ERROR: Vectorizer not found at {vectorizer_path}")
+        return
+    
+    with open(vectorizer_path, 'rb') as f:
+        vectorizer = pickle.load(f)
+    
     sess = ort.InferenceSession(
         str(model_path),
         sess_options=session_options
@@ -208,14 +275,22 @@ def example_mobile_deployment():
     
     # Single message inference
     message = "Your verification code is 123456"
-    X = np.array([message]).reshape(-1, 1)
+    
+    # Apply TF-IDF transformation
+    tfidf_vector = vectorizer.transform([message])
+    X = tfidf_vector.toarray().astype(np.float32)
     
     # Run inference
     outputs = sess.run(None, {input_name: X})
-    prediction = outputs[0][0]
+    prediction_output = outputs[0][0]
     
-    idx = int(prediction)
-    category = HAM_CATEGORIES[idx] if idx < len(HAM_CATEGORIES) else f"Unknown({idx})"
+    # Handle both string and int predictions
+    if isinstance(prediction_output, str):
+        category = prediction_output
+        idx = HAM_CATEGORIES.index(category) if category in HAM_CATEGORIES else -1
+    else:
+        idx = int(prediction_output)
+        category = HAM_CATEGORIES[idx] if idx < len(HAM_CATEGORIES) else f"Unknown({idx})"
     
     print(f"Message: '{message}'")
     print(f"Prediction: {category}")
@@ -236,7 +311,7 @@ class Stage2HAMClassifier:
     def __init__(self, model_path: str = None):
         """Initialize classifier with ONNX model."""
         import onnxruntime as ort
-        from ml.model.config import ARTIFACTS_DIR
+        from ml.model.config import ARTIFACTS_DIR, HAM_CATEGORIES
         
         model_path = model_path or (ARTIFACTS_DIR / "stage2_model.onnx")
         
@@ -248,7 +323,7 @@ class Stage2HAMClassifier:
         
         self.sess = ort.InferenceSession(str(model_path))
         self.input_name = self.sess.get_inputs()[0].name
-        self.categories = HAM_CATEGORIES
+        self.categories = list(HAM_CATEGORIES)
     
     def predict(self, text: str) -> dict:
         """
@@ -260,14 +335,37 @@ class Stage2HAMClassifier:
         Returns:
             Dictionary with prediction details
         """
-        X = np.array([text]).reshape(-1, 1)
+        import pickle
+        from ml.model.config import ARTIFACTS_DIR
+        
+        # Load vectorizer if not already loaded
+        if not hasattr(self, 'vectorizer'):
+            vectorizer_path = ARTIFACTS_DIR / "stage2_vectorizer.pkl"
+            if not vectorizer_path.exists():
+                raise FileNotFoundError(
+                    f"Vectorizer not found at {vectorizer_path}. "
+                    "Please ensure it was saved during export."
+                )
+            with open(vectorizer_path, 'rb') as f:
+                self.vectorizer = pickle.load(f)
+        
+        # Apply TF-IDF transformation
+        tfidf_vector = self.vectorizer.transform([text])
+        X = tfidf_vector.toarray().astype(np.float32)
+        
         outputs = self.sess.run(None, {self.input_name: X})
         
-        prediction = outputs[0][0]
-        idx = int(prediction)
+        # Handle both string and int predictions
+        prediction_output = outputs[0][0]
+        if isinstance(prediction_output, str):
+            category = prediction_output
+            idx = list(self.categories).index(category) if category in self.categories else -1
+        else:
+            idx = int(prediction_output)
+            category = self.categories[idx] if idx < len(self.categories) else f'Unknown({idx})'
         
         return {
-            'category': self.categories[idx] if idx < len(self.categories) else f'Unknown({idx})',
+            'category': category,
             'category_index': idx,
             'confidence': 1.0,  # Would need probability output for real confidence
             'all_outputs': outputs
@@ -283,16 +381,39 @@ class Stage2HAMClassifier:
         Returns:
             List of prediction dictionaries
         """
-        X = np.array(texts).reshape(-1, 1)
+        import pickle
+        from ml.model.config import ARTIFACTS_DIR
+        
+        # Load vectorizer if not already loaded
+        if not hasattr(self, 'vectorizer'):
+            vectorizer_path = ARTIFACTS_DIR / "stage2_vectorizer.pkl"
+            if not vectorizer_path.exists():
+                raise FileNotFoundError(
+                    f"Vectorizer not found at {vectorizer_path}. "
+                    "Please ensure it was saved during export."
+                )
+            with open(vectorizer_path, 'rb') as f:
+                self.vectorizer = pickle.load(f)
+        
+        # Transform all texts to TF-IDF vectors
+        tfidf_vectors = self.vectorizer.transform(texts)
+        X = tfidf_vectors.toarray().astype(np.float32)
+        
         outputs = self.sess.run(None, {self.input_name: X})
         
         predictions = outputs[0].flatten()
         
         results = []
-        for idx in predictions:
-            cat_idx = int(idx)
+        for pred in predictions:
+            if isinstance(pred, str):
+                category = pred
+                cat_idx = list(self.categories).index(category) if category in self.categories else -1
+            else:
+                cat_idx = int(pred)
+                category = self.categories[cat_idx] if cat_idx < len(self.categories) else f'Unknown({cat_idx})'
+            
             results.append({
-                'category': self.categories[cat_idx] if cat_idx < len(self.categories) else f'Unknown({cat_idx})',
+                'category': category,
                 'category_index': cat_idx,
                 'confidence': 1.0
             })

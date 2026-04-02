@@ -99,7 +99,7 @@ Attempting direct pipeline conversion...
 ### Step 4: Test Inference
 
 ```bash
-python -m ml.model.stage2.inference_example
+`python -m ml.model.stage2.inference_example`
 ```
 
 **Expected output:**
