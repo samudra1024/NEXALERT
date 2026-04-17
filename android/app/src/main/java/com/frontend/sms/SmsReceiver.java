@@ -1,6 +1,7 @@
 package com.frontend.sms;
 
 import android.content.BroadcastReceiver;
+import android.content.BroadcastReceiver.PendingResult;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
@@ -19,7 +20,7 @@ import java.util.concurrent.ExecutorService;
 import com.frontend.ml.MlPipelineManager;
 import com.frontend.ml.MlResult;
 import com.frontend.db.MlDatabaseHelper;
-
+import com.frontend.MainActivity;
 public class SmsReceiver extends BroadcastReceiver {
     
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -30,7 +31,7 @@ public class SmsReceiver extends BroadcastReceiver {
         
         if (Telephony.Sms.Intents.SMS_DELIVER_ACTION.equals(action)) {
             // Handle SMS_DELIVER - this is the primary action for default SMS apps
-            final PendingIntentResult pendingResult = goAsync();
+            final PendingResult pendingResult = goAsync();
             handleSmsDeliverAsync(context, intent, pendingResult);
         } else if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(action)) {
             // Fallback for non-default apps, we just log, or optionally process.
@@ -39,7 +40,7 @@ public class SmsReceiver extends BroadcastReceiver {
         }
     }
     
-    private void handleSmsDeliverAsync(Context context, Intent intent, PendingIntentResult pendingResult) {
+    private void handleSmsDeliverAsync(Context context, Intent intent, PendingResult pendingResult) {
         executor.execute(() -> {
             try {
                 Bundle bundle = intent.getExtras();
