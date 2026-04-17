@@ -29,8 +29,10 @@ class MlDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
                 MlMetadataContract.FeedEntry.COLUMN_NAME_CONFIDENCE + " REAL)"
         db.execSQL(createTable)
         
-        // Add index on address and timestamp for faster lookups
+        // Add indexes for faster lookups
         db.execSQL("CREATE INDEX idx_address_time ON ${MlMetadataContract.FeedEntry.TABLE_NAME} (${MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS}, ${MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP})")
+        db.execSQL("CREATE INDEX idx_timestamp ON ${MlMetadataContract.FeedEntry.TABLE_NAME} (${MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP})")
+        db.execSQL("CREATE INDEX idx_spam ON ${MlMetadataContract.FeedEntry.TABLE_NAME} (${MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM})")
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

@@ -48,40 +48,56 @@ public class SmsReceiver extends BroadcastReceiver {
                     String format = bundle.getString("format");
                     
                     if (pdus != null) {
-                        for (Object pdu : pdus) {
-                            SmsMessage smsMessage;
+                        // Multipart SMS handling - concatenate all parts
+                        SmsMessage[] messages = new SmsMessage[pdus.length];
+                        for (int i = 0; i < pdus.length; i++) {
                             if (format != null) {
-                                smsMessage = SmsMessage.createFromPdu((byte[]) pdu, format);
+                                messages[i] = SmsMessage.createFromPdu((byte[]) pdus[i], format);
                             } else {
-                                smsMessage = SmsMessage.createFromPdu((byte[]) pdu);
+                                messages[i] = SmsMessage.createFromPdu((byte[]) pdus[i]);
+                            }
+                        }
+                        
+                        // Check if this is a multipart message
+                        if (messages.length > 0 && messages[0] != null) {
+                            String sender = messages[0].getDisplayOriginatingAddress();
+                            long timestamp = messages[0].getTimestampMillis();
+                            
+                            // Concatenate multipart message body
+                            StringBuilder messageBodyBuilder = new StringBuilder();
+                            for (SmsMessage msg : messages) {
+                                if (msg != null && msg.getMessageBody() != null) {
+                                    messageBodyBuilder.append(msg.getMessageBody());
+                                }
+                            }
+                            String messageBody = messageBodyBuilder.toString();
+                            
+                            if (messages.length > 1) {
+                                android.util.Log.d("SmsReceiver", "Multipart SMS detected: " + messages.length + " parts from " + sender);
                             }
                             
-                            if (smsMessage != null) {
-                                String sender = smsMessage.getDisplayOriginatingAddress();
-                                String messageBody = smsMessage.getMessageBody();
-                                long timestamp = smsMessage.getTimestampMillis();
-                                
-                                // 1. Run ML Pipeline
-                                MlPipelineManager mlManager = MlPipelineManager.Companion.getInstance(context);
-                                MlResult result = mlManager.processMessage(messageBody);
+                            // 1. Run ML Pipeline
+                            MlPipelineManager mlManager = MlPipelineManager.Companion.getInstance(context);
+                            MlResult result = mlManager.processMessage(messageBody);
 
-                                // 2. Store ML metadata locally in standard SQLite table
-                                MlDatabaseHelper dbHelper = new MlDatabaseHelper(context);
-                                dbHelper.insertMetadata(sender, timestamp, result.isSpam(), result.getCategory(), result.getConfidence());
-                                
-                                // 3. Store in system SMS database using default Android approach
-                                storeSmsInDatabase(context, sender, messageBody, timestamp);
-                                
-                                // 4. Conditionally show notification!
-                                if (!result.isSpam()) {
-                                    showNotification(context, sender, messageBody, result.getCategory());
-                                } else {
-                                    android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
-                                }
+                            // 2. Store ML metadata locally in standard SQLite table
+                            MlDatabaseHelper dbHelper = new MlDatabaseHelper(context);
+                            dbHelper.insertMetadata(sender, timestamp, result.isSpam(), result.getCategory(), result.getConfidence());
+                            
+                            // 3. Store in system SMS database using default Android approach
+                            storeSmsInDatabase(context, sender, messageBody, timestamp);
+                            
+                            // 4. Conditionally show notification!
+                            if (!result.isSpam()) {
+                                showNotification(context, sender, messageBody, result.getCategory());
+                            } else {
+                                android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
                             }
                         }
                     }
                 }
+            } catch (Exception e) {
+                android.util.Log.e("SmsReceiver", "Error processing SMS", e);
             } finally {
                 if (pendingResult != null) {
                     pendingResult.finish();
