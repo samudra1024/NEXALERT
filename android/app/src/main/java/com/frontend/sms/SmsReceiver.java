@@ -1,4 +1,4 @@
-package com.frontend;
+package com.frontend.sms;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -14,54 +14,80 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.os.Build;
 import androidx.core.app.NotificationCompat;
-import android.graphics.BitmapFactory;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutorService;
+import com.frontend.ml.MlPipelineManager;
+import com.frontend.ml.MlResult;
+import com.frontend.db.MlDatabaseHelper;
 
 public class SmsReceiver extends BroadcastReceiver {
     
+    private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+
     @Override
     public void onReceive(Context context, Intent intent) {
         String action = intent.getAction();
         
         if (Telephony.Sms.Intents.SMS_DELIVER_ACTION.equals(action)) {
             // Handle SMS_DELIVER - this is the primary action for default SMS apps
-            handleSmsDeliver(context, intent);
+            final PendingIntentResult pendingResult = goAsync();
+            handleSmsDeliverAsync(context, intent, pendingResult);
         } else if (Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(action)) {
-            // Handle SMS_RECEIVED - fallback for non-default apps
+            // Fallback for non-default apps, we just log, or optionally process.
+            // For now, keep as original but minimal async if needed.
             handleSmsReceived(context, intent);
         }
     }
     
-    private void handleSmsDeliver(Context context, Intent intent) {
-        Bundle bundle = intent.getExtras();
-        if (bundle != null) {
-            Object[] pdus = (Object[]) bundle.get("pdus");
-            String format = bundle.getString("format");
-            
-            if (pdus != null) {
-                for (Object pdu : pdus) {
-                    SmsMessage smsMessage;
-                    if (format != null) {
-                        smsMessage = SmsMessage.createFromPdu((byte[]) pdu, format);
-                    } else {
-                        smsMessage = SmsMessage.createFromPdu((byte[]) pdu);
-                    }
+    private void handleSmsDeliverAsync(Context context, Intent intent, PendingIntentResult pendingResult) {
+        executor.execute(() -> {
+            try {
+                Bundle bundle = intent.getExtras();
+                if (bundle != null) {
+                    Object[] pdus = (Object[]) bundle.get("pdus");
+                    String format = bundle.getString("format");
                     
-                    if (smsMessage != null) {
-                        String sender = smsMessage.getDisplayOriginatingAddress();
-                        String messageBody = smsMessage.getMessageBody();
-                        long timestamp = smsMessage.getTimestampMillis();
-                        
-                        // Store in system SMS database
-                        storeSmsInDatabase(context, sender, messageBody, timestamp);
-                        
-                        // Show notification
-                        showNotification(context, sender, messageBody);
-                        
-                        android.util.Log.d("SmsReceiver", "SMS_DELIVER from: " + sender + ", message: " + messageBody);
+                    if (pdus != null) {
+                        for (Object pdu : pdus) {
+                            SmsMessage smsMessage;
+                            if (format != null) {
+                                smsMessage = SmsMessage.createFromPdu((byte[]) pdu, format);
+                            } else {
+                                smsMessage = SmsMessage.createFromPdu((byte[]) pdu);
+                            }
+                            
+                            if (smsMessage != null) {
+                                String sender = smsMessage.getDisplayOriginatingAddress();
+                                String messageBody = smsMessage.getMessageBody();
+                                long timestamp = smsMessage.getTimestampMillis();
+                                
+                                // 1. Run ML Pipeline
+                                MlPipelineManager mlManager = MlPipelineManager.Companion.getInstance(context);
+                                MlResult result = mlManager.processMessage(messageBody);
+
+                                // 2. Store ML metadata locally in standard SQLite table
+                                MlDatabaseHelper dbHelper = new MlDatabaseHelper(context);
+                                dbHelper.insertMetadata(sender, timestamp, result.isSpam(), result.getCategory(), result.getConfidence());
+                                
+                                // 3. Store in system SMS database using default Android approach
+                                storeSmsInDatabase(context, sender, messageBody, timestamp);
+                                
+                                // 4. Conditionally show notification!
+                                if (!result.isSpam()) {
+                                    showNotification(context, sender, messageBody, result.getCategory());
+                                } else {
+                                    android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
+                                }
+                            }
+                        }
                     }
                 }
+            } finally {
+                if (pendingResult != null) {
+                    pendingResult.finish();
+                }
             }
-        }
+        });
     }
     
     private void handleSmsReceived(Context context, Intent intent) {
@@ -82,7 +108,6 @@ public class SmsReceiver extends BroadcastReceiver {
                     if (smsMessage != null) {
                         String sender = smsMessage.getDisplayOriginatingAddress();
                         String messageBody = smsMessage.getMessageBody();
-                        long timestamp = smsMessage.getTimestampMillis();
                         
                         android.util.Log.d("SmsReceiver", "SMS_RECEIVED from: " + sender + ", message: " + messageBody);
                     }
@@ -120,7 +145,7 @@ public class SmsReceiver extends BroadcastReceiver {
         }
     }
     
-    private void showNotification(Context context, String sender, String message) {
+    private void showNotification(Context context, String sender, String message, String category) {
         try {
             NotificationManager notificationManager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             String channelId = "sms_notifications";
@@ -153,7 +178,7 @@ public class SmsReceiver extends BroadcastReceiver {
             // Build notification
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_email)
-                .setContentTitle("New message from " + sender)
+                .setContentTitle("New message from " + sender + " [" + category + "]")
                 .setContentText(message)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)

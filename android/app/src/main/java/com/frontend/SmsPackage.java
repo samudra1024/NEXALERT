@@ -8,6 +8,7 @@ import com.facebook.react.uimanager.ViewManager;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import com.frontend.bridge.SmsModule;
 
 public class SmsPackage implements ReactPackage {
 
