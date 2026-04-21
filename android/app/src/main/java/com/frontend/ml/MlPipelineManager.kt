@@ -29,30 +29,50 @@ class MlPipelineManager private constructor(private val context: Context) {
     
     // Performance monitoring
     private var modelLoadTimeMs: Long = 0
+    private var stage1LoadTimeMs: Long = 0
+    private var stage2LoadTimeMs: Long = 0
+    private var firstInferenceTimeMs: Long = -1
     private val INFERENCE_TIMEOUT_MS = 5000L // 5 seconds timeout
+    private var isFirstInference = true
 
     init {
         loadModelsSafely()
     }
 
-    // Enhanced model loading with safety guards
+    // Enhanced model loading with safety guards and detailed timing
     private fun loadModelsSafely() {
         if (modelLoaded.get()) return
         
-        val startTime = System.currentTimeMillis()
-        android.util.Log.d("MlPipelineManager", "Loading ONNX models...")
+        val totalStartTime = System.currentTimeMillis()
+        android.util.Log.d("MlPipelineManager", "========== ML MODEL LOADING START ==========")
         
         try {
             synchronized(modelLock) {
                 // Double-check after acquiring lock
                 if (modelLoaded.get()) return@loadModelsSafely
                 
+                // Load Stage 1 with timing
+                val stage1StartTime = System.currentTimeMillis()
+                android.util.Log.d("MlPipelineManager", "[1/3] Loading Stage 1 (Spam Detection)...")
                 stage1Session = loadSession("models/v1/stage1.onnx", "stage1.onnx")
+                stage1LoadTimeMs = System.currentTimeMillis() - stage1StartTime
+                android.util.Log.d("MlPipelineManager", "[1/3] Stage 1 loaded in ${stage1LoadTimeMs}ms")
+                
+                // Load Stage 2 with timing
+                val stage2StartTime = System.currentTimeMillis()
+                android.util.Log.d("MlPipelineManager", "[2/3] Loading Stage 2 (Categorization)...")
                 stage2Session = loadSession("models/v1/stage2.onnx", "stage2.onnx")
+                stage2LoadTimeMs = System.currentTimeMillis() - stage2StartTime
+                android.util.Log.d("MlPipelineManager", "[2/3] Stage 2 loaded in ${stage2LoadTimeMs}ms")
                 
                 modelLoaded.set(true)
-                modelLoadTimeMs = System.currentTimeMillis() - startTime
-                android.util.Log.d("MlPipelineManager", "Models loaded successfully in ${modelLoadTimeMs}ms")
+                modelLoadTimeMs = System.currentTimeMillis() - totalStartTime
+                
+                android.util.Log.d("MlPipelineManager", "========== ML MODEL LOADING COMPLETE ==========")
+                android.util.Log.d("MlPipelineManager", "  Stage 1 (Spam Detection): ${stage1LoadTimeMs}ms")
+                android.util.Log.d("MlPipelineManager", "  Stage 2 (Categorization): ${stage2LoadTimeMs}ms")
+                android.util.Log.d("MlPipelineManager", "  TOTAL LOAD TIME: ${modelLoadTimeMs}ms")
+                android.util.Log.d("MlPipelineManager", "================================================")
                 
                 // Process any queued messages
                 processQueuedMessages()
@@ -69,15 +89,34 @@ class MlPipelineManager private constructor(private val context: Context) {
     }
 
     private fun loadSession(assetPath: String, fileName: String): OrtSession {
+        val sessionStartTime = System.currentTimeMillis()
+        android.util.Log.d("MlPipelineManager", "  → Extracting $fileName from assets...")
+        
         val file = File(context.cacheDir, fileName)
-        if (!file.exists()) {
+        val fileExists = file.exists()
+        
+        if (!fileExists) {
+            val extractStartTime = System.currentTimeMillis()
             context.assets.open(assetPath).use { inputStream ->
                 FileOutputStream(file).use { outputStream ->
                     inputStream.copyTo(outputStream)
                 }
             }
+            val extractTime = System.currentTimeMillis() - extractStartTime
+            android.util.Log.d("MlPipelineManager", "  → Extraction completed in ${extractTime}ms")
+        } else {
+            android.util.Log.d("MlPipelineManager", "  → File already cached, skipping extraction")
         }
-        return ortEnv.createSession(file.absolutePath)
+        
+        android.util.Log.d("MlPipelineManager", "  → Creating ONNX session for $fileName...")
+        val sessionCreateStart = System.currentTimeMillis()
+        val session = ortEnv.createSession(file.absolutePath)
+        val sessionCreateTime = System.currentTimeMillis() - sessionCreateStart
+        
+        android.util.Log.d("MlPipelineManager", "  → ONNX session created in ${sessionCreateTime}ms")
+        android.util.Log.d("MlPipelineManager", "  → File size: ${file.length() / 1024}KB")
+        
+        return session
     }
 
     // Lazy initialization guard for app killed scenarios
@@ -101,7 +140,7 @@ class MlPipelineManager private constructor(private val context: Context) {
         return runInferenceWithTimeout(message)
     }
     
-    // Thread-safe inference with timeout protection
+    // Thread-safe inference with detailed timing
     private fun runInferenceWithTimeout(message: String): MlResult {
         val startTime = System.currentTimeMillis()
         
@@ -110,7 +149,17 @@ class MlPipelineManager private constructor(private val context: Context) {
                 runInferenceInternal(message)
             }.also {
                 val inferenceTime = System.currentTimeMillis() - startTime
-                if (inferenceTime > 100) { // Log slow inferences
+                
+                // Log first inference separately for cold start analysis
+                if (isFirstInference) {
+                    firstInferenceTimeMs = inferenceTime
+                    isFirstInference = false
+                    android.util.Log.d("MlPipelineManager", "========== FIRST INFERENCE ==========")
+                    android.util.Log.d("MlPipelineManager", "  First inference (cold start): ${firstInferenceTimeMs}ms")
+                    android.util.Log.d("MlPipelineManager", "  Message length: ${message.length} chars")
+                    android.util.Log.d("MlPipelineManager", "  Result: isSpam=${it.isSpam}, category=${it.category}")
+                    android.util.Log.d("MlPipelineManager", "=====================================")
+                } else if (inferenceTime > 100) {
                     android.util.Log.w("MlPipelineManager", "Slow inference: ${inferenceTime}ms")
                 }
             }
