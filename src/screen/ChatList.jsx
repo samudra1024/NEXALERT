@@ -35,6 +35,17 @@ const getAvatarColor = (address) => {
   return colors[index];
 };
 
+// Tab display label → ML category value (matches ml/model/config.py HAM_CATEGORIES)
+const ML_TAB_FILTERS = {
+  All: null,
+  Personal: 'personal',
+  Banking: 'banking',
+  OTP: 'otp',
+  Subscription: 'subscription',
+  Promotions: 'promotional',
+  Unknown: 'unknown',
+};
+
 
 export default function ChatsList() {
   const { theme, toggleTheme } = useTheme();
@@ -51,11 +62,9 @@ export default function ChatsList() {
 
   // UI States
   const [searchText, setSearchText] = useState('');
-  // Collections State
-  const [collections, setCollections] = useState(['All', 'Family', 'Official', 'Important']);
+  // Collections State — tabs aligned to ML category labels
+  const [collections, setCollections] = useState(Object.keys(ML_TAB_FILTERS));
   const [selectedCategory, setSelectedCategory] = useState('All');
-  // Mock Category Map (In a real app, this would be persisted)
-  const [categoryMap, setCategoryMap] = useState({});
   const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
 
@@ -175,9 +184,10 @@ export default function ChatsList() {
   const filteredContacts = useMemo(() => {
     let result = contacts;
 
-    // Category Filter
+    // Category Filter — match conversation ML category to selected tab
     if (selectedCategory !== 'All') {
-      result = result.filter(c => categoryMap[c.id] === selectedCategory);
+      const mlCategory = ML_TAB_FILTERS[selectedCategory] ?? selectedCategory.toLowerCase();
+      result = result.filter(c => c.category === mlCategory);
     }
 
     // Search Filter
@@ -190,7 +200,7 @@ export default function ChatsList() {
     }
 
     return result;
-  }, [contacts, selectedCategory, categoryMap, searchText]);
+  }, [contacts, selectedCategory, searchText]);
 
   const renderRightActions = (progress, dragX, item) => {
     const scale = dragX.interpolate({

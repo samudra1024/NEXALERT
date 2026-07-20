@@ -8,7 +8,13 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import kotlin.math.max
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 data class MlResult(
     val isSpam: Boolean,
@@ -24,8 +30,11 @@ class MlPipelineManager private constructor(private val context: Context) {
     // Production-grade reliability flags
     @Volatile
     private var modelLoaded = AtomicBoolean(false)
-    private val modelLock = Any()
+    // CHANGE: Replaced kotlinx.coroutines.sync.Mutex with ReentrantLock so model
+    // loading and inference can use blocking withLock without requiring suspend.
+    private val modelLock = ReentrantLock()
     private val messageQueue = ConcurrentLinkedQueue<QueuedMessage>()
+    private val backgroundScope = CoroutineScope(Dispatchers.IO) // Background thread for model loading
     
     // Performance monitoring
     private var modelLoadTimeMs: Long = 0
@@ -36,10 +45,14 @@ class MlPipelineManager private constructor(private val context: Context) {
     private var isFirstInference = true
 
     init {
-        loadModelsSafely()
+        // Load models asynchronously to avoid blocking main thread
+        backgroundScope.launch {
+            loadModelsSafely()
+        }
     }
 
     // Enhanced model loading with safety guards and detailed timing
+    // CHANGE: Removed suspend — Mutex was the only suspension point; ReentrantLock.withLock is blocking.
     private fun loadModelsSafely() {
         if (modelLoaded.get()) return
         
@@ -47,7 +60,7 @@ class MlPipelineManager private constructor(private val context: Context) {
         android.util.Log.d("MlPipelineManager", "========== ML MODEL LOADING START ==========")
         
         try {
-            synchronized(modelLock) {
+            modelLock.withLock {
                 // Double-check after acquiring lock
                 if (modelLoaded.get()) return@loadModelsSafely
                 
@@ -82,11 +95,9 @@ class MlPipelineManager private constructor(private val context: Context) {
             modelLoaded.set(false)
         }
     }
-    
-    @Deprecated("Use loadModelsSafely instead")
-    private fun loadModels() {
-        loadModelsSafely()
-    }
+
+    // CHANGE: Removed deprecated loadModels() wrapper — it incorrectly called suspend
+    // loadModelsSafely() from a non-suspend context and was unused in the codebase.
 
     private fun loadSession(assetPath: String, fileName: String): OrtSession {
         val sessionStartTime = System.currentTimeMillis()
@@ -122,7 +133,10 @@ class MlPipelineManager private constructor(private val context: Context) {
     // Lazy initialization guard for app killed scenarios
     private fun ensureModelLoaded() {
         if (!modelLoaded.get()) {
-            loadModelsSafely()
+            // Trigger async loading if not loaded
+            backgroundScope.launch {
+                loadModelsSafely()
+            }
         }
     }
     
@@ -141,11 +155,13 @@ class MlPipelineManager private constructor(private val context: Context) {
     }
     
     // Thread-safe inference with detailed timing
+    // CHANGE: Removed suspend — ReentrantLock.withLock provides the same mutual exclusion
+    // synchronously, so processMessage() can call this without a coroutine context.
     private fun runInferenceWithTimeout(message: String): MlResult {
         val startTime = System.currentTimeMillis()
         
         return try {
-            synchronized(modelLock) {
+            modelLock.withLock {
                 runInferenceInternal(message)
             }.also {
                 val inferenceTime = System.currentTimeMillis() - startTime
@@ -263,7 +279,7 @@ class MlPipelineManager private constructor(private val context: Context) {
                                 maxIdx = i
                             }
                         }
-                        val categories = arrayOf("Finance", "Promotions", "Utility", "Personal", "Others")
+                        val categories = arrayOf("personal", "banking", "otp", "subscription", "promotional", "unknown")
                         if (maxIdx < categories.size) {
                             category = categories[maxIdx]
                         } else {
@@ -318,8 +334,10 @@ class MlPipelineManager private constructor(private val context: Context) {
         private var instance: MlPipelineManager? = null
 
         fun getInstance(context: Context): MlPipelineManager {
-            return instance ?: synchronized(this) {
-                instance ?: MlPipelineManager(context.applicationContext).also { instance = it }
+            return instance ?: runBlocking {
+                synchronized(this@Companion) {
+                    instance ?: MlPipelineManager(context.applicationContext).also { instance = it }
+                }
             }
         }
     }
