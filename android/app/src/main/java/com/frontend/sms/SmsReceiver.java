@@ -77,22 +77,36 @@ public class SmsReceiver extends BroadcastReceiver {
                                 android.util.Log.d("SmsReceiver", "Multipart SMS detected: " + messages.length + " parts from " + sender);
                             }
                             
+                            // DEBUG: Log incoming SMS body
+                            android.util.Log.d("[NexAlert-ML]", "[RECV] Incoming SMS from: " + sender);
+                            android.util.Log.d("[NexAlert-ML]", "[RECV] SMS body: " + messageBody.substring(0, Math.min(80, messageBody.length())));
+                            android.util.Log.d("[NexAlert-ML]", "[RECV] SMS timestamp from PDU: " + timestamp);
+
                             // 1. Run ML Pipeline
                             MlPipelineManager mlManager = MlPipelineManager.Companion.getInstance(context);
                             MlResult result = mlManager.processMessage(messageBody);
 
+                            // DEBUG: Log ML prediction result
+                            android.util.Log.d("[NexAlert-ML]", "[ML] Prediction result: isSpam=" + result.isSpam()
+                                + " category=" + result.getCategory()
+                                + " confidence=" + result.getConfidence());
+                            android.util.Log.d("[NexAlert-ML]", "[PIPE] SMS body=" + messageBody
+                                + " | ML predicted category=" + result.getCategory());
+
                             // 2. Store ML metadata locally in standard SQLite table
                             MlDatabaseHelper dbHelper = new MlDatabaseHelper(context);
                             dbHelper.insertMetadata(sender, timestamp, result.isSpam(), result.getCategory(), result.getConfidence());
-                            
+                            android.util.Log.d("[NexAlert-ML]", "[DB] Stored ML metadata: addr=" + sender
+                                + " ts=" + timestamp + " category=" + result.getCategory());
+
                             // 3. Store in system SMS database using default Android approach
                             storeSmsInDatabase(context, sender, messageBody, timestamp);
-                            
+
                             // 4. Conditionally show notification!
                             if (!result.isSpam()) {
                                 showNotification(context, sender, messageBody, result.getCategory());
                             } else {
-                                android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
+                                android.util.Log.d("[NexAlert-ML]", "[RECV] Spam blocked! Discarding notification for: " + sender);
                             }
                         }
                     }

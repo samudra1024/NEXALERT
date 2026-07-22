@@ -293,6 +293,7 @@ class MlPipelineManager private constructor(private val context: Context) {
             android.util.Log.e("MlPipelineManager", "Inference error", e)
         }
 
+        android.util.Log.d("MlPipelineManager", "[ML] Final category=" + category + " | isSpam=" + isSpam)
         return MlResult(isSpam, confidence, category)
     }
     

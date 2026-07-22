@@ -41,33 +41,59 @@ public class SmsModule extends ReactContextBaseJavaModule {
             // Fetch mapping from our SQLite ML DB
             MlDatabaseHelper dbHelper = new MlDatabaseHelper(getReactApplicationContext());
             android.database.sqlite.SQLiteDatabase db = dbHelper.getReadableDatabase();
-            
-            Cursor mlCursor = db.query(MlMetadataContract.FeedEntry.TABLE_NAME, 
+
+            // DEBUG: Log total ML metadata entries for pipeline tracing
+            Cursor countCursor = db.rawQuery("SELECT COUNT(*) FROM " + MlMetadataContract.FeedEntry.TABLE_NAME, null);
+            if (countCursor != null) {
+                if (countCursor.moveToFirst()) {
+                    android.util.Log.d("[NexAlert-ML]", "[DB] Total ML metadata entries: " + countCursor.getInt(0));
+                }
+                countCursor.close();
+            }
+
+            Cursor mlCursor = db.query(MlMetadataContract.FeedEntry.TABLE_NAME,
                 new String[]{
-                    MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS, 
-                    MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP, 
-                    MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM, 
-                    MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY, 
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY,
                     MlMetadataContract.FeedEntry.COLUMN_NAME_CONFIDENCE
-                }, null, null, null, null, null);
-            
+                }, null, null, null, null,
+                MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP + " DESC"); // newest first
+
+            // FIX: Key by address only (keep the latest ML result per sender).
+            // Previously keyed by addr+timestamp which caused mismatches because
+            // getTimestampMillis() (from SMS PDU) != the date column in content://sms
+            // (assigned by the OS when inserting). This meant no ML category was ever
+            // matched, so every message fell through to the "unknown" default.
             java.util.HashMap<String, WritableMap> mlMap = new java.util.HashMap<>();
             if (mlCursor != null) {
-                while(mlCursor.moveToNext()) {
+                while (mlCursor.moveToNext()) {
                     String addr = mlCursor.getString(0);
                     long ts = mlCursor.getLong(1);
                     boolean isSpam = mlCursor.getInt(2) == 1;
                     String category = mlCursor.getString(3);
                     float conf = mlCursor.getFloat(4);
-                    
-                    WritableMap map = Arguments.createMap();
-                    map.putBoolean("is_spam", isSpam);
-                    map.putString("category", category);
-                    map.putDouble("confidence", conf);
-                    mlMap.put(addr + "_" + ts, map);
+
+                    // DEBUG: Log every ML metadata row
+                    android.util.Log.d("[NexAlert-ML]", "[DB] ML metadata row: addr=" + addr
+                        + " ts=" + ts + " isSpam=" + isSpam
+                        + " category=" + category + " conf=" + conf);
+
+                    // Only store the first (newest) result per address since cursor is DESC
+                    if (!mlMap.containsKey(addr)) {
+                        WritableMap map = Arguments.createMap();
+                        map.putBoolean("is_spam", isSpam);
+                        map.putString("category", category);
+                        map.putDouble("confidence", conf);
+                        mlMap.put(addr, map);
+                        android.util.Log.d("[NexAlert-ML]", "[DB] Stored ML result for addr=" + addr + " -> category=" + category);
+                    }
                 }
                 mlCursor.close();
             }
+
+            android.util.Log.d("[NexAlert-ML]", "[DB] Unique ML addresses loaded: " + mlMap.size());
 
             Cursor cursor = contentResolver.query(uri, projection, null, null, "date DESC");
             WritableArray smsArray = Arguments.createArray();
@@ -77,24 +103,35 @@ public class SmsModule extends ReactContextBaseJavaModule {
                     WritableMap smsMap = Arguments.createMap();
                     String address = cursor.getString(cursor.getColumnIndexOrThrow("address"));
                     String date = cursor.getString(cursor.getColumnIndexOrThrow("date"));
+                    String body = cursor.getString(cursor.getColumnIndexOrThrow("body"));
 
                     smsMap.putString("id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
                     smsMap.putString("address", address);
-                    smsMap.putString("body", cursor.getString(cursor.getColumnIndexOrThrow("body")));
+                    smsMap.putString("body", body);
                     smsMap.putString("date", date);
                     smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
                     smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
 
-                    // Apply ML Metadata if it exists
-                    String key = address + "_" + date;
-                    if (mlMap.containsKey(key)) {
-                        WritableMap mlData = mlMap.get(key);
+                    // FIX: Look up by address alone (was addr+timestamp — timestamps mismatched)
+                    if (mlMap.containsKey(address)) {
+                        WritableMap mlData = mlMap.get(address);
+                        String category = mlData.getString("category");
                         smsMap.putBoolean("is_spam", mlData.getBoolean("is_spam"));
-                        smsMap.putString("category", mlData.getString("category"));
+                        smsMap.putString("category", category);
                         smsMap.putDouble("confidence", mlData.getDouble("confidence"));
+                        // DEBUG: Log successful ML category assignment
+                        android.util.Log.d("[NexAlert-ML]", "[API] SMS addr=" + address
+                            + " body=" + (body != null ? body.substring(0, Math.min(40, body.length())) : "null")
+                            + " -> category=" + category + " [ML MATCH]");
+                        android.util.Log.d("[NexAlert-ML]", "[PIPE] Category stored=" + category
+                            + " | Category returned to frontend=" + category);
                     } else {
                         smsMap.putBoolean("is_spam", false);
                         smsMap.putString("category", "unknown");
+                        // DEBUG: Log fallback to unknown
+                        android.util.Log.d("[NexAlert-ML]", "[API] SMS addr=" + address
+                            + " body=" + (body != null ? body.substring(0, Math.min(40, body.length())) : "null")
+                            + " -> category=unknown [NO ML MATCH — no metadata for this sender]");
                     }
 
                     smsArray.pushMap(smsMap);

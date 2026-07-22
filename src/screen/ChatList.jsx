@@ -1,5 +1,5 @@
 // screens/ChatsList.js
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -46,7 +46,6 @@ const ML_TAB_FILTERS = {
   Unknown: 'unknown',
 };
 
-
 export default function ChatsList() {
   const { theme, toggleTheme } = useTheme();
   const navigation = useNavigation();
@@ -65,6 +64,7 @@ export default function ChatsList() {
   // Collections State — tabs aligned to ML category labels
   const [collections, setCollections] = useState(Object.keys(ML_TAB_FILTERS));
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const categoryScrollRef = useRef(null);
   const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
 
@@ -130,6 +130,15 @@ export default function ChatsList() {
     checkDefaultSmsApp();
     loadSmsMessages();
   }, []);
+
+  useEffect(() => {
+    if (!categoryScrollRef.current || selectedCategory === 'All') return;
+
+    const index = collections.indexOf(selectedCategory);
+    if (index >= 0) {
+      categoryScrollRef.current.scrollTo({ x: Math.max(0, index * 110), animated: true });
+    }
+  }, [collections, selectedCategory]);
 
   const refreshSmsData = async () => {
     setSmsLoaded(false);
@@ -199,6 +208,7 @@ export default function ChatsList() {
       );
     }
 
+    console.log('[NexAlert-ML] [React] Conversations passing filter:', result.length);
     return result;
   }, [contacts, selectedCategory, searchText]);
 
@@ -301,7 +311,15 @@ export default function ChatsList() {
 
       {/* Collections Bar */}
       <View style={[styles.categoryBarContainer, { borderBottomColor: theme.border }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScrollView}>
+        <ScrollView
+          ref={categoryScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled={true}
+          bounces={true}
+          style={styles.categoryScroll}
+          contentContainerStyle={styles.categoryScrollView}
+        >
           {collections.map(cat => (
             <TouchableOpacity
               key={cat}
@@ -590,9 +608,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f2f5',
   },
+  categoryScroll: {
+    flexGrow: 0,
+  },
   categoryScrollView: {
     paddingHorizontal: 20,
     alignItems: 'center',
+    paddingRight: 8,
   },
   categoryPill: {
     paddingHorizontal: 16,
