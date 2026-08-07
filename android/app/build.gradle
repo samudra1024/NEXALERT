@@ -77,6 +77,10 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
+    androidResources {
+        noCompress += ["onnx"]
+    }
+
     namespace "com.frontend"
     defaultConfig {
         applicationId "com.frontend"

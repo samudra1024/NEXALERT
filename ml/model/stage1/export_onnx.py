@@ -1,17 +1,38 @@
 """
-Export trained model to ONNX format for mobile deployment.
-Run this AFTER training the model.
+Export trained Stage 1 (Spam Detection) model to ONNX format.
+
+ROOT CAUSE ANALYSIS (Fixed in this script):
+============================================
+Original failure: AttributeError: 'TfidfTransformer' object has no attribute 'idf_'
+
+Cause:
+  - Model was pickled with scikit-learn 1.3.0
+  - Current environment has scikit-learn 1.9.0
+  - In sklearn 1.3, TfidfTransformer stored IDF weights in _idf_diag (sparse diagonal matrix)
+  - In sklearn 1.9, idf_ is a cached property backed differently; unpickling a 1.3 model
+    sets _idf_diag but NOT the new idf_ cache -> AttributeError when skl2onnx reads idf_
+
+  Secondary failure (in original script only): option 'optim' not in valid options for
+  TfidfVectorizer — was removed in skl2onnx >= 1.17. Never pass unknown option keys.
+
+Fix:
+  - After loading the vectorizer, manually patch tfidf_transformer.idf_ = diagonal of _idf_diag
+  - This re-creates the numpy array that skl2onnx expects without retraining anything
+
+Full Pipeline ONNX (String Input):
+  - Full sklearn Pipeline (TfIdfVectorizer -> LinearClassifier) exported
+  - Input: tensor(string) shape=[N] — raw SMS text, directly from Android
+  - Output: output_label (int64: 0=ham, 1=spam), output_probability (map)
 """
 
 import logging
 import pickle
+import warnings
 from pathlib import Path
-import numpy as np
-from skl2onnx import convert_sklearn
-from skl2onnx.common.data_types import FloatTensorType, StringTensorType
-from sklearn.pipeline import Pipeline
 
-from ml.model.config import ARTIFACTS_DIR, TFIDF_CONFIG
+import numpy as np
+
+from ml.model.config import ARTIFACTS_DIR
 
 # Setup logging
 logging.basicConfig(
@@ -21,176 +42,208 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _fix_idf_compatibility(vectorizer):
+    """
+    Fix sklearn 1.3 -> 1.9 pickle compatibility for TfidfVectorizer.
+
+    In sklearn 1.3, TfidfTransformer stores IDF weights as a sparse diagonal
+    matrix in _idf_diag. In sklearn 1.9, the idf_ property is backed differently.
+    When a sklearn 1.3 model is loaded in sklearn 1.9, _idf_diag is restored but
+    idf_ (the numpy array) is not — causing AttributeError in skl2onnx.
+
+    This function patches the missing idf_ attribute without retraining.
+
+    Args:
+        vectorizer: Fitted TfidfVectorizer loaded from a pickle file.
+
+    Returns:
+        True if patch was applied, False if idf_ was already present.
+
+    Raises:
+        AttributeError: If neither _idf_diag nor idf_ is available.
+    """
+    tfidf_transformer = vectorizer._tfidf
+    if hasattr(tfidf_transformer, '_idf_diag') and not hasattr(tfidf_transformer, 'idf_'):
+        # Extract the diagonal of the sparse matrix -> shape [vocab_size]
+        idf_array = np.asarray(tfidf_transformer._idf_diag.diagonal()).flatten()
+        tfidf_transformer.idf_ = idf_array
+        logger.info(f"Patched idf_ compatibility: shape={idf_array.shape}, dtype={idf_array.dtype}")
+        return True
+    elif hasattr(tfidf_transformer, 'idf_'):
+        logger.info(f"idf_ already present: shape={tfidf_transformer.idf_.shape}")
+        return False
+    else:
+        raise AttributeError(
+            "TfidfTransformer has neither _idf_diag nor idf_. "
+            "Model may be corrupt or from an unsupported sklearn version."
+        )
+
+
 def export_to_onnx():
     """
-    Convert trained sklearn pipeline to ONNX format.
-    
-    Note: We need to recreate the pipeline from individual components
-    since TF-IDF + LogisticRegression are separate in our implementation.
+    Export Stage 1 Spam Detection pipeline to ONNX format.
+
+    Pipeline: TF-IDF (5000 features) -> Logistic Regression (binary classifier)
+    Input:    tensor(string), shape=[N]    — raw SMS text
+    Output:   output_label (int64: 0=ham, 1=spam), output_probability
+
+    Returns:
+        Path to the saved ONNX model file.
     """
     logger.info("=" * 70)
-    logger.info("EXPORTING MODEL TO ONNX FORMAT")
+    logger.info("STAGE 1: EXPORTING SPAM DETECTION MODEL TO ONNX")
     logger.info("=" * 70)
-    
-    # ==========================================================================
-    # STEP 1: Load Trained Components
-    # ==========================================================================
+
+    # =========================================================================
+    # STEP 1: Load Trained Artifacts
+    # =========================================================================
     logger.info("\nLoading trained model artifacts...")
-    
+
     vectorizer_path = ARTIFACTS_DIR / "vectorizer.pkl"
     model_path = ARTIFACTS_DIR / "model.pkl"
-    
+
+    if not vectorizer_path.exists():
+        raise FileNotFoundError(f"Vectorizer not found: {vectorizer_path}\nRun train.py first.")
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}\nRun train.py first.")
+
     with open(vectorizer_path, 'rb') as f:
-        vectorizer = pickle.load(f)
-    logger.info(f"✓ Loaded vectorizer from {vectorizer_path}")
-    
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            vectorizer = pickle.load(f)
+    logger.info(f"Loaded vectorizer: vocab_size={len(vectorizer.vocabulary_)}")
+
     with open(model_path, 'rb') as f:
-        model = pickle.load(f)
-    logger.info(f"✓ Loaded model from {model_path}")
-    
-    # ==========================================================================
-    # STEP 2: Create Sklearn Pipeline
-    # ==========================================================================
-    logger.info("\nCreating sklearn pipeline...")
-    
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = pickle.load(f)
+    logger.info(f"Loaded model: {type(model).__name__}, classes={list(model.classes_)}")
+
+    # =========================================================================
+    # STEP 2: Fix sklearn Version Compatibility (Root Cause Fix)
+    # =========================================================================
+    logger.info("\nFixing sklearn version compatibility (idf_ attribute patch)...")
+    patched = _fix_idf_compatibility(vectorizer)
+    if patched:
+        logger.info("Applied idf_ patch for sklearn 1.3 -> 1.9 compatibility")
+
+    # =========================================================================
+    # STEP 3: Build sklearn Pipeline
+    # =========================================================================
+    logger.info("\nBuilding sklearn Pipeline (TF-IDF + Logistic Regression)...")
+    from sklearn.pipeline import Pipeline
     pipeline = Pipeline([
         ('tfidf', vectorizer),
         ('classifier', model)
     ])
-    
-    logger.info("✓ Pipeline created successfully")
-    
-    # ==========================================================================
-    # STEP 3: Convert to ONNX
-    # ==========================================================================
-    logger.info("\nConverting to ONNX format...")
-    
-    # Define input type - we accept string input (raw text)
-    # The pipeline will handle vectorization internally
-    initial_type = [
-        ('input', StringTensorType([None, 1]))
-    ]
-    
-    try:
-        # Convert pipeline to ONNX
-        onnx_model = convert_sklearn(
-            pipeline,
-            initial_types=initial_type,
-            target_opset=11,
-            options={
-                'tfidf': {
-                    'optim': 'cdist'  # Optimize TF-IDF computation
-                }
-            }
+    logger.info("Pipeline created successfully")
+
+    # =========================================================================
+    # STEP 4: Convert to ONNX
+    # =========================================================================
+    logger.info("\nConverting to ONNX (full pipeline)...")
+
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import StringTensorType
+
+    # StringTensorType([None]) -> 1D string tensor
+    # Matches Android: OnnxTensor.createTensor(ortEnv, arrayOf(message))
+    initial_type = [('input', StringTensorType([None]))]
+
+    onnx_model = convert_sklearn(
+        pipeline,
+        initial_types=initial_type,
+        target_opset=12,
+        # NOTE: Do NOT pass options with 'optim' key — removed in skl2onnx >= 1.17
+    )
+
+    # Validate ONNX graph contains TF-IDF preprocessing node
+    op_types = set(n.op_type for n in onnx_model.graph.node)
+    if 'TfIdfVectorizer' not in op_types:
+        raise RuntimeError(
+            f"EXPORT VALIDATION FAILED: ONNX graph is missing TfIdfVectorizer node.\n"
+            f"Found ops: {sorted(op_types)}\n"
+            f"This means TF-IDF preprocessing was not included. "
+            f"The model would return wrong results."
         )
-        
-        logger.info("✓ Model converted to ONNX successfully")
-        
-    except Exception as e:
-        logger.error(f"Conversion failed: {e}")
-        logger.info("\nTrying alternative conversion method...")
-        
-        # Alternative: Convert without string input (requires pre-vectorized input)
-        # This is simpler but requires manual TF-IDF on mobile
-        initial_type_numeric = [
-            ('float_input', FloatTensorType([None, TFIDF_CONFIG['max_features']]))
-        ]
-        
-        # Convert only the classifier (not the full pipeline)
-        onnx_model = convert_sklearn(
-            model,
-            initial_types=initial_type_numeric,
-            target_opset=11
-        )
-        
-        logger.info("✓ Converted classifier only (TF-IDF must be applied separately)")
-        logger.warning("⚠️  You'll need to implement TF-IDF preprocessing on mobile")
-    
-    # ==========================================================================
-    # STEP 4: Save ONNX Model
-    # ==========================================================================
+
+    logger.info(f"ONNX graph op_types: {sorted(op_types)}")
+    logger.info("TfIdfVectorizer node confirmed present in ONNX graph")
+
+    # =========================================================================
+    # STEP 5: Save ONNX Model
+    # =========================================================================
     logger.info("\nSaving ONNX model...")
-    
     onnx_path = ARTIFACTS_DIR / "model.onnx"
-    
     with open(onnx_path, "wb") as f:
         f.write(onnx_model.SerializeToString())
-    
-    logger.info(f"✓ ONNX model saved to {onnx_path}")
-    
-    # ==========================================================================
-    # STEP 5: Verify ONNX Model
-    # ==========================================================================
-    logger.info("\nVerifying ONNX model...")
-    
+    logger.info(f"Saved: {onnx_path} ({onnx_path.stat().st_size / 1024:.2f} KB)")
+
+    # =========================================================================
+    # STEP 6: Verify with OnnxRuntime
+    # =========================================================================
+    logger.info("\nVerifying with OnnxRuntime...")
     try:
         import onnxruntime as ort
-        
-        # Load ONNX session
+
         sess = ort.InferenceSession(str(onnx_path))
-        
-        # Get input/output names
-        input_name = sess.get_inputs()[0].name
-        output_name = sess.get_outputs()[0].name
-        
-        logger.info(f"✓ ONNX model verified")
-        logger.info(f"  Input name: {input_name}")
-        logger.info(f"  Output name: {output_name}")
-        
-        # Test inference with sample text
-        test_texts = np.array(["Congratulations! You've won a prize!", "Hey, how are you?"])
-        
-        # Reshape for batch input
-        test_texts = test_texts.reshape(-1, 1)
-        
-        # Run inference
-        predictions = sess.run([output_name], {input_name: test_texts})
-        
-        logger.info(f"✓ Test inference successful")
-        logger.info(f"  Predictions shape: {predictions[0].shape}")
-        logger.info(f"  Sample prediction: {predictions[0][0]}")
-        
+        inp = sess.get_inputs()[0]
+
+        logger.info(f"  Input:  name={inp.name}, type={inp.type}, shape={inp.shape}")
+        for out in sess.get_outputs():
+            logger.info(f"  Output: name={out.name}, type={out.type}, shape={out.shape}")
+
+        # Verify input type is string
+        assert inp.type == 'tensor(string)', (
+            f"CRITICAL: Input type must be tensor(string), got {inp.type}. "
+            f"Android sends STRING, not FLOAT."
+        )
+
+        # Test inference with 1D array (matching Android's arrayOf(message))
+        test_texts = np.array(
+            ["Congratulations! You've won a free prize!", "Hey are you coming tonight?"],
+            dtype=object
+        )
+        results = sess.run(None, {inp.name: test_texts})
+        logger.info(f"  Test labels (0=ham, 1=spam): {results[0]}")
+        logger.info("  OnnxRuntime verification passed")
+
     except ImportError:
-        logger.warning("⚠️  onnxruntime not installed. Skipping verification.")
+        logger.warning("onnxruntime not installed — skipping verification")
         logger.info("Install with: pip install onnxruntime")
-    except Exception as e:
-        logger.warning(f"⚠️  Verification warning: {e}")
-    
-    # ==========================================================================
+
+    # =========================================================================
     # Summary
-    # ==========================================================================
+    # =========================================================================
     logger.info("\n" + "=" * 70)
-    logger.info("ONNX EXPORT COMPLETE")
+    logger.info("STAGE 1 ONNX EXPORT COMPLETE")
     logger.info("=" * 70)
-    
-    logger.info(f"\n📦 ONNX model saved: {onnx_path}")
-    logger.info(f"📊 File size: {onnx_path.stat().st_size / 1024:.2f} KB")
-    
-    logger.info("\n📱 MOBILE DEPLOYMENT:")
-    logger.info("   ✓ Model is ready for mobile deployment")
-    logger.info("   ✓ See README.md for Android/iOS integration instructions")
-    logger.info("   ✓ Use ONNX Runtime Mobile for optimized inference")
-    
-    logger.info("\n🔗 USEFUL LINKS:")
-    logger.info("   - ONNX Runtime: https://onnxruntime.ai/")
-    logger.info("   - Android: https://onnxruntime.ai/docs/tutorials/mobile/")
-    logger.info("   - iOS: https://onnxruntime.ai/docs/tutorials/mobile/")
-    
+    logger.info(f"\n  Model:            {onnx_path}")
+    logger.info(f"  File size:        {onnx_path.stat().st_size / 1024:.2f} KB")
+    logger.info(f"  Input name:       input")
+    logger.info(f"  Input type:       tensor(string)")
+    logger.info(f"  Input shape:      [N]  (1D — matches Android arrayOf(message))")
+    logger.info(f"  TF-IDF in graph:  YES (TfIdfVectorizer op)")
+    logger.info(f"  Output:           output_label (int64: 0=ham, 1=spam)")
+    logger.info(f"                    output_probability (map<int64, float>)")
+
     return onnx_path
 
 
 if __name__ == "__main__":
     try:
-        export_to_onnx()
+        onnx_path = export_to_onnx()
         print("\n" + "=" * 70)
-        print("✅ ONNX EXPORT SUCCESSFUL!")
+        print("STAGE 1 ONNX EXPORT SUCCESSFUL")
         print("=" * 70)
-        print(f"\nModel saved to: {ARTIFACTS_DIR / 'model.onnx'}")
-        print("\nReady for mobile deployment!")
+        print(f"\nModel saved: {onnx_path}")
+        print(f"File size:   {onnx_path.stat().st_size / 1024:.2f} KB")
+        print("\nNEXT STEP: Copy to Android assets:")
+        print(f"  copy {onnx_path} android\\app\\src\\main\\assets\\models\\v1\\stage1.onnx")
     except FileNotFoundError as e:
-        print(f"\n❌ Error: {e}")
-        print("\nPlease train the model first:")
-        print("  python train.py")
+        print(f"\nError: {e}")
+        print("\nTrain the model first:")
+        print("  python -m ml.model.stage1.train")
     except Exception as e:
-        print(f"\n❌ Export failed: {e}")
-        logger.exception("Detailed error:")
+        print(f"\nExport failed: {e}")
+        logger.exception("Detailed traceback:")

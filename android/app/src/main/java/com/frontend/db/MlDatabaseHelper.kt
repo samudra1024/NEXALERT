@@ -40,7 +40,26 @@ class MlDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
         onCreate(db)
     }
 
+    /** True if ml_metadata already has a row for this exact SMS (address + timestamp). */
+    fun hasMetadata(address: String, timestamp: Long): Boolean {
+        val db = readableDatabase
+        db.query(
+            MlMetadataContract.FeedEntry.TABLE_NAME,
+            arrayOf(BaseColumns._ID),
+            "${MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS} = ? AND ${MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP} = ?",
+            arrayOf(address, timestamp.toString()),
+            null,
+            null,
+            null
+        ).use { cursor ->
+            return cursor.moveToFirst()
+        }
+    }
+
     fun insertMetadata(address: String, timestamp: Long, isSpam: Boolean, category: String, confidence: Float) {
+        if (hasMetadata(address, timestamp)) {
+            return
+        }
         val db = this.writableDatabase
         val values = ContentValues().apply {
             put(MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS, address)

@@ -43,22 +43,12 @@ class SmsController {
       }
 
       const messages = await SmsModule.getSmsMessages();
-      const processed = messages.map(msg => ({
+      return messages.map(msg => ({
         ...msg,
         date: parseInt(msg.date),
         type: parseInt(msg.type),
         read: parseInt(msg.read)
       }));
-
-      // DEBUG: Log category received from native module for each message
-      console.log('[NexAlert-ML] [Controller] Total messages from native:', processed.length);
-      processed.forEach(msg => {
-        console.log('[NexAlert-ML] [Controller] msg addr=' + msg.address
-          + ' | body=' + (msg.body ? msg.body.substring(0, 80) : 'null')
-          + ' | category=' + msg.category);
-      });
-
-      return processed;
     } catch (error) {
       console.error('Error fetching SMS:', error);
       throw error;

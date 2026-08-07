@@ -1,6 +1,9 @@
 package com.frontend.ml
 
+import ai.onnxruntime.OnnxMap
+import ai.onnxruntime.OnnxSequence
 import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OnnxValue
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
@@ -26,7 +29,15 @@ class MlPipelineManager private constructor(private val context: Context) {
     private val ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var stage1Session: OrtSession? = null
     private var stage2Session: OrtSession? = null
-    
+
+    /** TEMP: Android-only runtime trace for HAM SMS verification. Remove after debugging. */
+    private fun shouldLogAndroidRuntime(message: String): Boolean {
+        return true
+    }
+
+    private fun logRuntime(tag: String, message: String) {
+        android.util.Log.d("AndroidRuntimeML", "[$tag] $message")
+    }
     // Production-grade reliability flags
     @Volatile
     private var modelLoaded = AtomicBoolean(false)
@@ -54,6 +65,7 @@ class MlPipelineManager private constructor(private val context: Context) {
     // Enhanced model loading with safety guards and detailed timing
     // CHANGE: Removed suspend — Mutex was the only suspension point; ReentrantLock.withLock is blocking.
     private fun loadModelsSafely() {
+        android.util.Log.d("MODEL_LOAD", "loadModelsSafely() started")
         if (modelLoaded.get()) return
         
         val totalStartTime = System.currentTimeMillis()
@@ -79,6 +91,8 @@ class MlPipelineManager private constructor(private val context: Context) {
                 android.util.Log.d("MlPipelineManager", "[2/3] Stage 2 loaded in ${stage2LoadTimeMs}ms")
                 
                 modelLoaded.set(true)
+                android.util.Log.d("MODEL_LOAD", "modelLoaded=true")
+                android.util.Log.d("MODEL_READY", "Models loaded successfully")
                 modelLoadTimeMs = System.currentTimeMillis() - totalStartTime
                 
                 android.util.Log.d("MlPipelineManager", "========== ML MODEL LOADING COMPLETE ==========")
@@ -90,7 +104,13 @@ class MlPipelineManager private constructor(private val context: Context) {
                 // Process any queued messages
                 processQueuedMessages()
             }
+
+            // Schedule one-time inbox backfill after models are ready (background, idempotent)
+            if (modelLoaded.get()) {
+                InitialSmsClassifier.scheduleAfterModelsLoaded(context)
+            }
         } catch (e: Exception) {
+            android.util.Log.e("MODEL_LOAD", "Model loading failed", e)
             android.util.Log.e("MlPipelineManager", "Error loading ONNX models", e)
             modelLoaded.set(false)
         }
@@ -104,20 +124,20 @@ class MlPipelineManager private constructor(private val context: Context) {
         android.util.Log.d("MlPipelineManager", "  → Extracting $fileName from assets...")
         
         val file = File(context.cacheDir, fileName)
-        val fileExists = file.exists()
-        
-        if (!fileExists) {
-            val extractStartTime = System.currentTimeMillis()
-            context.assets.open(assetPath).use { inputStream ->
-                FileOutputStream(file).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-            val extractTime = System.currentTimeMillis() - extractStartTime
-            android.util.Log.d("MlPipelineManager", "  → Extraction completed in ${extractTime}ms")
-        } else {
-            android.util.Log.d("MlPipelineManager", "  → File already cached, skipping extraction")
+
+        // Always replace the cached model with the latest asset
+        if (file.exists()) {
+            file.delete()
         }
+
+        val extractStartTime = System.currentTimeMillis()
+        context.assets.open(assetPath).use { inputStream ->
+            FileOutputStream(file).use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+        }
+        val extractTime = System.currentTimeMillis() - extractStartTime
+        android.util.Log.d("MlPipelineManager", "  → Extraction completed in ${extractTime}ms")
         
         android.util.Log.d("MlPipelineManager", "  → Creating ONNX session for $fileName...")
         val sessionCreateStart = System.currentTimeMillis()
@@ -141,6 +161,8 @@ class MlPipelineManager private constructor(private val context: Context) {
     }
     
     fun processMessage(message: String): MlResult {
+        android.util.Log.d("MODEL_READY", "modelLoaded=" + modelLoaded.get())
+
         // Lazy initialization for robustness
         ensureModelLoaded()
         
@@ -150,7 +172,9 @@ class MlPipelineManager private constructor(private val context: Context) {
             messageQueue.add(QueuedMessage(message))
             return getSafeFallback() // Return safe default immediately
         }
-        
+
+        android.util.Log.d("MODEL_READY", "Running inference")
+
         return runInferenceWithTimeout(message)
     }
     
@@ -187,114 +211,254 @@ class MlPipelineManager private constructor(private val context: Context) {
     
     // Original inference logic - UNCHANGED, just wrapped for safety
     private fun runInferenceInternal(message: String): MlResult {
+        android.util.Log.d("ML_START", "runInferenceInternal() called with: $message")
         var isSpam = false
         var confidence = 0.0f
         var category = "unknown"
+        val runtimeDebug = shouldLogAndroidRuntime(message)
+
+        if (runtimeDebug) {
+            logRuntime("SMS", "body=\"$message\"")
+        }
         
         val s1 = stage1Session
         if (s1 == null) {
             android.util.Log.e("MlPipelineManager", "Stage 1 session is null")
+            if (runtimeDebug) logRuntime("FAIL", "Stage 1 session is null")
             return MlResult(isSpam, confidence, category)
         }
 
         try {
-            // Stage 1: Spam Detection
+            // Stage 1: Spam Detection — outputs output_label (int64) + output_probability (seq(map))
             val inputName = s1.inputNames.iterator().next()
             val inputTensor = OnnxTensor.createTensor(ortEnv, arrayOf(message))
             val results = s1.run(mapOf(inputName to inputTensor))
-            
-            var spamProb = 0f
-            for (res in results) {
-                val value = res.value
-                if (value is OnnxTensor) {
-                    try {
-                        val floatBuffer = value.floatBuffer
-                        if (floatBuffer != null) {
-                            if (floatBuffer.capacity() >= 2) {
-                                spamProb = floatBuffer.get(1) // class 1
-                            } else if (floatBuffer.capacity() == 1) {
-                                spamProb = floatBuffer.get(0)
-                            }
-                        }
-                        break
-                    } catch (e: Exception) {}
-                } else if (value is Array<*>) {
-                    // Sometimes float maps or generic arrays
-                    try {
-                       val firstRow = value[0]
-                       if (firstRow is FloatArray) {
-                           if (firstRow.size >= 2) spamProb = firstRow[1]
-                           else if (firstRow.size == 1) spamProb = firstRow[0]
-                       }
-                       break
-                    } catch (e: Exception) {}
-                }
+
+            val spamLabel = parseSpamLabel(results)
+            val spamProb = parseClassProbability(results, spamClassKey = 1L)
+            isSpam = spamLabel == 1L
+            confidence = if (spamProb > 0f) spamProb else if (isSpam) 1f else 0f
+
+            if (runtimeDebug) {
+                logRuntime("Stage1", "spamLabel=$spamLabel")
+                logRuntime("Stage1", "confidence=$confidence")
+                logRuntime("Stage1", "isSpam=$isSpam")
             }
-            
-            isSpam = spamProb >= 0.5f
-            confidence = spamProb
+
             results.close()
             inputTensor.close()
 
-            // Stage 2: Categorization
+            // Stage 2: Categorization — outputs output_label (string) + output_probability (seq(map))
             if (!isSpam) {
                 val s2 = stage2Session
                 if (s2 != null) {
                     val stage2InputName = s2.inputNames.iterator().next()
                     val stage2InputTensor = OnnxTensor.createTensor(ortEnv, arrayOf(message))
+
+                    if (runtimeDebug) {
+                        logRuntime("Stage2", "IMMEDIATELY BEFORE s2.run() inputName=$stage2InputName")
+                    }
+
                     val stage2Results = s2.run(mapOf(stage2InputName to stage2InputTensor))
 
-                    var catProbArray: FloatArray? = null
-                    for (res in stage2Results) {
-                        val value = res.value
-                        if (value is OnnxTensor) {
-                            try {
-                                val floatBuffer = value.floatBuffer
-                                if (floatBuffer != null) {
-                                    catProbArray = FloatArray(floatBuffer.capacity())
-                                    floatBuffer.get(catProbArray)
-                                }
-                                break
-                            } catch (e: Exception) {}
-                        } else if (value is Array<*>) {
-                            try {
-                                val firstRow = value[0]
-                                if (firstRow is FloatArray) {
-                                    catProbArray = firstRow
-                                }
-                                break
-                            } catch(e: Exception){}
+                    if (runtimeDebug) {
+                        val outputKeys = stage2Results.map { it.key }
+                        logRuntime("Stage2", "IMMEDIATELY AFTER s2.run() stage2Results.keys=$outputKeys")
+                        for (entry in stage2Results) {
+                            val outputName = entry.key
+                            val onnxValue = entry.value
+                            logRuntime(
+                                "Stage2Output",
+                                "outputName=$outputName | class=${onnxValue?.javaClass?.name} | value=${describeOnnxValue(onnxValue)}"
+                            )
                         }
                     }
-                    
+
+                    category = parseCategoryLabel(stage2Results, runtimeDebug)
+
                     stage2Results.close()
                     stage2InputTensor.close()
-
-                    if (catProbArray != null && catProbArray.isNotEmpty()) {
-                        var maxIdx = 0
-                        var maxVal = catProbArray[0]
-                        for (i in 1 until catProbArray.size) {
-                            if (catProbArray[i] > maxVal) {
-                                maxVal = catProbArray[i]
-                                maxIdx = i
-                            }
-                        }
-                        val categories = arrayOf("personal", "banking", "otp", "subscription", "promotional", "unknown")
-                        if (maxIdx < categories.size) {
-                            category = categories[maxIdx]
-                        } else {
-                            category = "Category_$maxIdx"
-                        }
-                    }
+                } else if (runtimeDebug) {
+                    logRuntime("FAIL", "Stage 2 session is null — categorization skipped")
                 }
+            } else if (runtimeDebug) {
+                logRuntime("FAIL", "Stage 2 skipped because Stage 1 isSpam=true")
             }
 
         } catch (e: Exception) {
             android.util.Log.e("MlPipelineManager", "Inference error", e)
+            if (runtimeDebug) logRuntime("FAIL", "Exception during inference: ${e.javaClass.name}: ${e.message}")
         }
 
-        android.util.Log.d("MlPipelineManager", "[ML] Final category=" + category + " | isSpam=" + isSpam)
+        if (runtimeDebug) {
+            logRuntime("Final", "isSpam=$isSpam confidence=$confidence category=$category")
+        }
+
         return MlResult(isSpam, confidence, category)
+    }
+
+    /** TEMP: Describe OnnxValue for Android runtime logging. */
+    private fun describeOnnxValue(onnxValue: OnnxValue?): String {
+        if (onnxValue == null) return "null"
+        return try {
+            val raw = onnxValue.value
+            "rawClass=${raw?.javaClass?.name} rawValue=$raw toString=${onnxValue}"
+        } catch (e: Exception) {
+            "errorReadingValue=${e.message} toString=${onnxValue}"
+        }
+    }
+
+    /** Stage 1 output_label: tensor(int64) — 0=ham, 1=spam */
+    private fun parseSpamLabel(results: OrtSession.Result): Long {
+        val labelValue = results.get("output_label").orElse(null) ?: return 0L
+        return extractLongFromOnnxValue(labelValue)
+    }
+
+    /** Stage 2 output_label: tensor(string) — category name directly from model */
+    private fun parseCategoryLabel(results: OrtSession.Result, runtimeDebug: Boolean = false): String {
+        val availableKeys = results.map { it.key }
+        if (runtimeDebug) {
+            logRuntime("parseCategoryLabel", "availableKeys=$availableKeys")
+        }
+
+        val labelValue = results.get("output_label").orElse(null)
+        if (runtimeDebug) {
+            logRuntime(
+                "parseCategoryLabel",
+                "output_label present=${labelValue != null} | class=${labelValue?.javaClass?.name} | value=${describeOnnxValue(labelValue)}"
+            )
+        }
+
+        if (labelValue == null) {
+            if (runtimeDebug) {
+                logRuntime(
+                    "parseCategoryLabel",
+                    "RETURNING unknown — FAILED: results.get(\"output_label\") was empty (key missing from stage2Results)"
+                )
+            }
+            return "unknown"
+        }
+
+        val extracted = extractStringFromOnnxValue(labelValue, runtimeDebug)
+        if (runtimeDebug) {
+            logRuntime("parseCategoryLabel", "extractedString=$extracted")
+        }
+
+        if (extracted == "unknown" && runtimeDebug) {
+            logRuntime(
+                "parseCategoryLabel",
+                "RETURNING unknown — FAILED: extractStringFromOnnxValue could not read a non-empty string (see extractString logs above)"
+            )
+        } else if (runtimeDebug) {
+            logRuntime("parseCategoryLabel", "returning category=$extracted")
+        }
+
+        return extracted
+    }
+
+    /** output_probability: sequence(map(key, float)) — first map entry in sequence */
+    private fun parseClassProbability(results: OrtSession.Result, spamClassKey: Long): Float {
+        val probValue = results.get("output_probability").orElse(null) ?: return 0f
+        if (probValue !is OnnxSequence) return 0f
+        val seqList = probValue.value as? List<*> ?: return 0f
+        if (seqList.isEmpty()) return 0f
+        val mapValue = seqList[0] as? OnnxMap ?: return 0f
+        val probMap = mapValue.value ?: return 0f
+        for ((key, value) in probMap) {
+            val keyLong = when (key) {
+                is Number -> key.toLong()
+                else -> null
+            }
+            if (keyLong == spamClassKey) {
+                return when (value) {
+                    is Float -> value
+                    is Double -> value.toFloat()
+                    is Number -> value.toFloat()
+                    else -> 0f
+                }
+            }
+        }
+        return 0f
+    }
+
+    private fun extractLongFromOnnxValue(onnxValue: OnnxValue): Long {
+        return when (val v = onnxValue.value) {
+            is LongArray -> if (v.isNotEmpty()) v[0] else 0L
+            is Array<*> -> (v.firstOrNull() as? Number)?.toLong() ?: 0L
+            is Number -> v.toLong()
+            else -> {
+                if (onnxValue is OnnxTensor) {
+                    onnxValue.longBuffer?.let { buf ->
+                        if (buf.capacity() > 0) buf.get(0) else 0L
+                    } ?: 0L
+                } else {
+                    0L
+                }
+            }
+        }
+    }
+
+    private fun extractStringFromOnnxValue(onnxValue: OnnxValue, runtimeDebug: Boolean = false): String {
+        val v = onnxValue.value
+        if (runtimeDebug) {
+            logRuntime("extractString", "onnxValue.class=${onnxValue.javaClass.name} | v.class=${v?.javaClass?.name} | v=$v")
+        }
+
+        return when (v) {
+            is Array<*> -> {
+                val first = v.firstOrNull()
+                if (runtimeDebug) {
+                    logRuntime("extractString", "branch=Array size=${v.size} first.class=${first?.javaClass?.name} first=$first")
+                }
+                (first as? String)?.takeIf { it.isNotEmpty() } ?: run {
+                    if (runtimeDebug) {
+                        logRuntime(
+                            "extractString",
+                            "FAIL branch=Array — first element is not a non-empty String (first=$first)"
+                        )
+                    }
+                    "unknown"
+                }
+            }
+            is String -> {
+                if (runtimeDebug) logRuntime("extractString", "branch=String value=\"$v\"")
+                v.ifEmpty {
+                    if (runtimeDebug) logRuntime("extractString", "FAIL branch=String — value is empty")
+                    "unknown"
+                }
+            }
+            else -> {
+                if (onnxValue is OnnxTensor) {
+                    val tensorValue = onnxValue.value
+                    if (runtimeDebug) {
+                        logRuntime(
+                            "extractString",
+                            "branch=OnnxTensor tensorValue.class=${tensorValue?.javaClass?.name} tensorValue=$tensorValue"
+                        )
+                    }
+                    (tensorValue as? Array<*>)?.firstOrNull()?.let { first ->
+                        if (runtimeDebug) logRuntime("extractString", "OnnxTensor array first.class=${first.javaClass.name} first=$first")
+                        (first as? String)?.takeIf { it.isNotEmpty() }
+                    } ?: run {
+                        if (runtimeDebug) {
+                            logRuntime(
+                                "extractString",
+                                "FAIL branch=OnnxTensor — tensorValue is not Array with non-empty String first element"
+                            )
+                        }
+                        null
+                    } ?: "unknown"
+                } else {
+                    if (runtimeDebug) {
+                        logRuntime(
+                            "extractString",
+                            "FAIL branch=else — v is neither Array, String, nor OnnxTensor (v.class=${v?.javaClass?.name})"
+                        )
+                    }
+                    "unknown"
+                }
+            }
+        }
     }
     
     // Safe fallback - never crash

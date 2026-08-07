@@ -42,6 +42,8 @@ public class SmsReceiver extends BroadcastReceiver {
     
     private void handleSmsDeliverAsync(Context context, Intent intent, PendingResult pendingResult) {
         executor.execute(() -> {
+            android.util.Log.d("SMS_RECEIVER", "handleSmsDeliverAsync() called");
+            
             try {
                 Bundle bundle = intent.getExtras();
                 if (bundle != null) {
@@ -77,27 +79,23 @@ public class SmsReceiver extends BroadcastReceiver {
                                 android.util.Log.d("SmsReceiver", "Multipart SMS detected: " + messages.length + " parts from " + sender);
                             }
                             
-                            // DEBUG: Log incoming SMS body
-                            android.util.Log.d("[NexAlert-ML]", "[RECV] Incoming SMS from: " + sender);
-                            android.util.Log.d("[NexAlert-ML]", "[RECV] SMS body: " + messageBody.substring(0, Math.min(80, messageBody.length())));
-                            android.util.Log.d("[NexAlert-ML]", "[RECV] SMS timestamp from PDU: " + timestamp);
-
                             // 1. Run ML Pipeline
                             MlPipelineManager mlManager = MlPipelineManager.Companion.getInstance(context);
                             MlResult result = mlManager.processMessage(messageBody);
-
-                            // DEBUG: Log ML prediction result
-                            android.util.Log.d("[NexAlert-ML]", "[ML] Prediction result: isSpam=" + result.isSpam()
-                                + " category=" + result.getCategory()
-                                + " confidence=" + result.getConfidence());
-                            android.util.Log.d("[NexAlert-ML]", "[PIPE] SMS body=" + messageBody
-                                + " | ML predicted category=" + result.getCategory());
+                            
+                            // TEMP DEBUG
+                            android.util.Log.d(
+                                "ML_CHECK",
+                                "Sender=" + sender +
+                                "\nMessage=" + messageBody +
+                                "\nSpam=" + result.isSpam() +
+                                "\nCategory=" + result.getCategory() +
+                                "\nConfidence=" + result.getConfidence()
+                            );
 
                             // 2. Store ML metadata locally in standard SQLite table
                             MlDatabaseHelper dbHelper = new MlDatabaseHelper(context);
                             dbHelper.insertMetadata(sender, timestamp, result.isSpam(), result.getCategory(), result.getConfidence());
-                            android.util.Log.d("[NexAlert-ML]", "[DB] Stored ML metadata: addr=" + sender
-                                + " ts=" + timestamp + " category=" + result.getCategory());
 
                             // 3. Store in system SMS database using default Android approach
                             storeSmsInDatabase(context, sender, messageBody, timestamp);
@@ -106,7 +104,7 @@ public class SmsReceiver extends BroadcastReceiver {
                             if (!result.isSpam()) {
                                 showNotification(context, sender, messageBody, result.getCategory());
                             } else {
-                                android.util.Log.d("[NexAlert-ML]", "[RECV] Spam blocked! Discarding notification for: " + sender);
+                                android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
                             }
                         }
                     }

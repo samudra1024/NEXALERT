@@ -208,7 +208,6 @@ export default function ChatsList() {
       );
     }
 
-    console.log('[NexAlert-ML] [React] Conversations passing filter:', result.length);
     return result;
   }, [contacts, selectedCategory, searchText]);
 

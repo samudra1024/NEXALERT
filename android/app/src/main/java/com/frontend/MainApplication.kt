@@ -9,6 +9,7 @@ import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
+import com.frontend.ml.MlPipelineManager
 
 class MainApplication : Application(), ReactApplication {
 
@@ -36,5 +37,9 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+    // TEMP: Trigger Android runtime ML trace on debug builds only
+    if (BuildConfig.DEBUG) {
+      MlPipelineManager.getInstance(applicationContext)
+    }
   }
 }
