@@ -17,13 +17,24 @@ import kotlinx.coroutines.launch
 object InitialSmsClassifier {
 
     private const val TAG = "BACKFILL"
+    private const val PREF_TAG = "BACKFILL_PREF"
+    private const val PREF_NAME = "ml_preferences"
+    private const val KEY_MODEL_VERSION = "ml_model_version"
+    private const val CURRENT_MODEL_VERSION = 1
     private val isRunning = AtomicBoolean(false)
 
     /**
      * Schedules backfill on a background thread after ML models are loaded.
+     * Skips immediately if a previous run completed successfully (SharedPreferences).
      * Safe to call multiple times; skips messages that already have metadata.
      */
     fun scheduleAfterModelsLoaded(context: Context) {
+        val appContext = context.applicationContext
+
+        if (isBackfillCompleted(appContext)) {
+            return
+        }
+
         if (!isRunning.compareAndSet(false, true)) {
             Log.d(TAG, "Already running — skip duplicate schedule")
             return
@@ -31,14 +42,50 @@ object InitialSmsClassifier {
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                runBackfill(context.applicationContext)
+                runBackfill(appContext)
             } finally {
                 isRunning.set(false)
             }
         }
     }
 
+    private fun isBackfillCompleted(context: Context): Boolean {
+        val savedVersion = prefs(context).getInt(KEY_MODEL_VERSION, 0)
+
+        if (savedVersion == CURRENT_MODEL_VERSION) {
+            Log.d(
+                PREF_TAG,
+                "Backfill already completed for model version $savedVersion"
+            )
+            return true
+        }
+
+        Log.d(
+            PREF_TAG,
+            "Running backfill. Saved=$savedVersion Current=$CURRENT_MODEL_VERSION"
+        )
+
+        return false
+    }
+
+    private fun markBackfillCompleted(context: Context) {
+        prefs(context)
+            .edit()
+            .putInt(KEY_MODEL_VERSION, CURRENT_MODEL_VERSION)
+            .apply()
+
+        Log.d(
+            PREF_TAG,
+            "Saved model version $CURRENT_MODEL_VERSION"
+        )
+    }
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+
     private fun runBackfill(context: Context) {
+        Log.d(PREF_TAG, "Starting first-time backfill")
+
         val startMs = System.currentTimeMillis()
         Log.d(TAG, "Started")
 
@@ -56,61 +103,70 @@ object InitialSmsClassifier {
             Telephony.Sms.DATE
         )
 
-        val cursor = context.contentResolver.query(
-            Uri.parse("content://sms"),
-            projection,
-            null,
-            null,
-            "${Telephony.Sms.DATE} ASC"
-        )
+        try {
+            val cursor = context.contentResolver.query(
+                Uri.parse("content://sms"),
+                projection,
+                null,
+                null,
+                "${Telephony.Sms.DATE} ASC"
+            )
 
-        if (cursor == null) {
-            Log.e(TAG, "Failed to query content://sms")
-            Log.d(TAG, "Finished")
-            Log.d(TAG, "Total execution time: ${System.currentTimeMillis() - startMs}ms")
-            return
-        }
+            if (cursor == null) {
+                Log.e(TAG, "Failed to query content://sms")
+                Log.d(TAG, "Finished")
+                Log.d(TAG, "Total execution time: ${System.currentTimeMillis() - startMs}ms")
+                return
+            }
 
-        cursor.use {
-            totalSms = it.count
-            Log.d(TAG, "Total SMS found: $totalSms")
+            cursor.use {
+                totalSms = it.count
+                Log.d(TAG, "Total SMS found: $totalSms")
 
-            while (it.moveToNext()) {
-                val address = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS))
-                if (address.isNullOrBlank()) {
-                    failed++
-                    continue
-                }
+                while (it.moveToNext()) {
+                    val address = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.ADDRESS))
+                    if (address.isNullOrBlank()) {
+                        failed++
+                        continue
+                    }
 
-                val body = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.BODY)) ?: ""
-                val timestamp = it.getLong(it.getColumnIndexOrThrow(Telephony.Sms.DATE))
+                    val body = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.BODY)) ?: ""
+                    val timestamp = it.getLong(it.getColumnIndexOrThrow(Telephony.Sms.DATE))
 
-                if (dbHelper.hasMetadata(address, timestamp)) {
-                    alreadyClassified++
-                    continue
-                }
+                    if (dbHelper.hasMetadata(address, timestamp)) {
+                        alreadyClassified++
+                        continue
+                    }
 
-                try {
-                    val result = mlManager.processMessage(body)
-                    dbHelper.insertMetadata(
-                        address,
-                        timestamp,
-                        result.isSpam,
-                        result.category,
-                        result.confidence
-                    )
-                    newlyClassified++
-                } catch (e: Exception) {
-                    failed++
-                    Log.e(TAG, "Failed address=$address timestamp=$timestamp", e)
+                    try {
+                        val result = mlManager.processMessage(body)
+                        dbHelper.insertMetadata(
+                            address,
+                            timestamp,
+                            result.isSpam,
+                            result.category,
+                            result.confidence
+                        )
+                        newlyClassified++
+                    } catch (e: Exception) {
+                        failed++
+                        Log.e(TAG, "Failed address=$address timestamp=$timestamp", e)
+                    }
                 }
             }
-        }
 
-        Log.d(TAG, "Already classified: $alreadyClassified")
-        Log.d(TAG, "Newly classified: $newlyClassified")
-        Log.d(TAG, "Failed: $failed")
-        Log.d(TAG, "Finished")
-        Log.d(TAG, "Total execution time: ${System.currentTimeMillis() - startMs}ms")
+            Log.d(TAG, "Already classified: $alreadyClassified")
+            Log.d(TAG, "Newly classified: $newlyClassified")
+            Log.d(TAG, "Failed: $failed")
+            Log.d(TAG, "Finished")
+            Log.d(TAG, "Total execution time: ${System.currentTimeMillis() - startMs}ms")
+
+            if (failed == 0) {
+                markBackfillCompleted(context)
+                Log.d(PREF_TAG, "Backfill completed successfully")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Backfill aborted due to error", e)
+        }
     }
 }
