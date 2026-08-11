@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     backgroundColor: '#f7faff',
     marginHorizontal: 5,
-   
+
   },
   submitBtn: {
     backgroundColor: '#298cff',

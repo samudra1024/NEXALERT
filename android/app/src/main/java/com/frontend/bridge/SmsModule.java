@@ -1,4 +1,4 @@
-package com.frontend;
+package com.frontend.bridge;
 
 import android.content.ContentResolver;
 import android.content.ContentValues;
@@ -18,6 +18,8 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReadableArray;
+import com.frontend.db.MlDatabaseHelper;
+import com.frontend.db.MlMetadataContract;
 
 public class SmsModule extends ReactContextBaseJavaModule {
 
@@ -37,18 +39,69 @@ public class SmsModule extends ReactContextBaseJavaModule {
             Uri uri = Uri.parse("content://sms");
             String[] projection = { "_id", "address", "body", "date", "type", "read" };
 
+            // Fetch mapping from our SQLite ML DB
+            MlDatabaseHelper dbHelper = new MlDatabaseHelper(getReactApplicationContext());
+            android.database.sqlite.SQLiteDatabase db = dbHelper.getReadableDatabase();
+
+            Cursor mlCursor = db.query(MlMetadataContract.FeedEntry.TABLE_NAME,
+                new String[]{
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY,
+                    MlMetadataContract.FeedEntry.COLUMN_NAME_CONFIDENCE
+                }, null, null, null, null,
+                MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP + " DESC"); // newest first
+
+            // Key by address + timestamp so each SMS gets its own ML category
+            java.util.HashMap<String, WritableMap> mlMap = new java.util.HashMap<>();
+            if (mlCursor != null) {
+                while (mlCursor.moveToNext()) {
+                    String addr = mlCursor.getString(0);
+                    long ts = mlCursor.getLong(1);
+                    boolean isSpam = mlCursor.getInt(2) == 1;
+                    String category = mlCursor.getString(3);
+                    float conf = mlCursor.getFloat(4);
+
+                    String key = addr + "_" + ts;
+                    WritableMap map = Arguments.createMap();
+                    map.putBoolean("is_spam", isSpam);
+                    map.putString("category", category);
+                    map.putDouble("confidence", conf);
+                    mlMap.put(key, map);
+                }
+                mlCursor.close();
+            }
+
             Cursor cursor = contentResolver.query(uri, projection, null, null, "date DESC");
             WritableArray smsArray = Arguments.createArray();
 
             if (cursor != null) {
                 while (cursor.moveToNext()) {
                     WritableMap smsMap = Arguments.createMap();
+                    String address = cursor.getString(cursor.getColumnIndexOrThrow("address"));
+                    String date = cursor.getString(cursor.getColumnIndexOrThrow("date"));
+                    String body = cursor.getString(cursor.getColumnIndexOrThrow("body"));
+
                     smsMap.putString("id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
-                    smsMap.putString("address", cursor.getString(cursor.getColumnIndexOrThrow("address")));
-                    smsMap.putString("body", cursor.getString(cursor.getColumnIndexOrThrow("body")));
-                    smsMap.putString("date", cursor.getString(cursor.getColumnIndexOrThrow("date")));
+                    smsMap.putString("address", address);
+                    smsMap.putString("body", body);
+                    smsMap.putString("date", date);
                     smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
                     smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
+
+                    String mlKey = address + "_" + date;
+                    if (mlMap.containsKey(mlKey)) {
+                        WritableMap mlData = mlMap.get(mlKey);
+                        String category = mlData.getString("category");
+                        smsMap.putBoolean("is_spam", mlData.getBoolean("is_spam"));
+                        smsMap.putString("category", category);
+                        smsMap.putDouble("confidence", mlData.getDouble("confidence"));
+                    } else {
+                        smsMap.putBoolean("is_spam", false);
+                        smsMap.putString("category", "unknown");
+                    }
+
                     smsArray.pushMap(smsMap);
                 }
                 cursor.close();

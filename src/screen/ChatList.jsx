@@ -1,5 +1,5 @@
 // screens/ChatsList.js
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -36,6 +36,16 @@ const getAvatarColor = (address) => {
   return colors[index];
 };
 
+// Tab display label → ML category value (matches ml/model/config.py HAM_CATEGORIES)
+const ML_TAB_FILTERS = {
+  All: null,
+  Personal: 'personal',
+  Banking: 'banking',
+  OTP: 'otp',
+  Subscription: 'subscription',
+  Promotions: 'promotional',
+  Unknown: 'unknown',
+};
 
 export default function ChatsList() {
   const { theme, toggleTheme } = useTheme();
@@ -52,11 +62,10 @@ export default function ChatsList() {
 
   // UI States
   const [searchText, setSearchText] = useState('');
-  // Collections State
-  const [collections, setCollections] = useState([]);
+  // Collections State — tabs aligned to ML category labels
+  const [collections, setCollections] = useState(Object.keys(ML_TAB_FILTERS));
   const [selectedCategory, setSelectedCategory] = useState('All');
-  // Mock Category Map (In a real app, this would be persisted)
-  const [categoryMap, setCategoryMap] = useState({});
+  const categoryScrollRef = useRef(null);
   const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState('');
   const [editingCategory, setEditingCategory] = useState(null);
@@ -122,19 +131,16 @@ export default function ChatsList() {
   useEffect(() => {
     checkDefaultSmsApp();
     loadSmsMessages();
-    loadCategories();
+  }, []);
 
-    const unsubscribe = navigation.addListener('focus', () => {
-      loadSmsMessages(true); // Refresh on focus (e.g. returning from Recycle Bin)
-    });
+  useEffect(() => {
+    if (!categoryScrollRef.current || selectedCategory === 'All') return;
 
-    return unsubscribe;
-  }, [navigation]);
-
-  const loadCategories = async () => {
-    const cats = await CategoryController.getCategories();
-    setCollections(cats);
-  };
+    const index = collections.indexOf(selectedCategory);
+    if (index >= 0) {
+      categoryScrollRef.current.scrollTo({ x: Math.max(0, index * 110), animated: true });
+    }
+  }, [collections, selectedCategory]);
 
   const refreshSmsData = async () => {
     setSmsLoaded(false);
@@ -218,9 +224,10 @@ export default function ChatsList() {
   const filteredContacts = useMemo(() => {
     let result = contacts;
 
-    // Category Filter
+    // Category Filter — match conversation ML category to selected tab
     if (selectedCategory !== 'All') {
-      result = result.filter(c => categoryMap[c.id] === selectedCategory);
+      const mlCategory = ML_TAB_FILTERS[selectedCategory] ?? selectedCategory.toLowerCase();
+      result = result.filter(c => c.category === mlCategory);
     }
 
     // Search Filter
@@ -233,7 +240,7 @@ export default function ChatsList() {
     }
 
     return result;
-  }, [contacts, selectedCategory, categoryMap, searchText]);
+  }, [contacts, selectedCategory, searchText]);
 
   const renderRightActions = useCallback((progress, dragX, item) => {
     const scale = dragX.interpolate({
@@ -381,7 +388,15 @@ export default function ChatsList() {
 
       {/* Collections Bar */}
       <View style={[styles.categoryBarContainer, { borderBottomColor: theme.border }]}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryScrollView}>
+        <ScrollView
+          ref={categoryScrollRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled={true}
+          bounces={true}
+          style={styles.categoryScroll}
+          contentContainerStyle={styles.categoryScrollView}
+        >
           {collections.map(cat => (
             <TouchableOpacity
               key={cat}
@@ -669,9 +684,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f2f5',
   },
+  categoryScroll: {
+    flexGrow: 0,
+  },
   categoryScrollView: {
     paddingHorizontal: 20,
     alignItems: 'center',
+    paddingRight: 8,
   },
   categoryPill: {
     paddingHorizontal: 16,

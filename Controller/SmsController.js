@@ -92,6 +92,7 @@ class SmsController {
             time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
             rawTime: msg.date,
             unread: 0,
+            category: msg.category ?? 'unknown',
           };
         }
 
