@@ -1,1 +1,1 @@
-export const BaseURL = 'http://192.168.1.11:8000/api' // Replace with your computer's local IP address 
+export const BaseURL = 'http://10.124.229.188:8000/api' // Replace with your computer's local IP address 

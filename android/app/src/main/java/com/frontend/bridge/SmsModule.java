@@ -18,13 +18,46 @@ import com.facebook.react.bridge.WritableArray;
 import com.facebook.react.bridge.WritableMap;
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.ReadableArray;
+import android.app.Activity;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
+import java.util.ArrayList;
 import com.frontend.db.MlDatabaseHelper;
 import com.frontend.db.MlMetadataContract;
 
 public class SmsModule extends ReactContextBaseJavaModule {
 
+    private static ReactApplicationContext reactContextHolder;
+
     public SmsModule(ReactApplicationContext reactContext) {
         super(reactContext);
+        reactContextHolder = reactContext;
+    }
+
+    public static void emitSmsReceived(String sender, String body, long date) {
+        if (reactContextHolder == null) {
+            return;
+        }
+        try {
+            WritableMap params = Arguments.createMap();
+            params.putString("sender", sender);
+            params.putString("body", body != null ? body : "");
+            params.putDouble("date", (double) date);
+            reactContextHolder
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onSmsReceived", params);
+        } catch (Exception e) {
+            android.util.Log.e("SmsModule", "Failed to emit onSmsReceived", e);
+        }
+    }
+
+    @ReactMethod
+    public void addListener(String eventName) {
+        // Required for NativeEventEmitter
+    }
+
+    @ReactMethod
+    public void removeListeners(double count) {
+        // Required for NativeEventEmitter
     }
 
     @Override
@@ -32,29 +65,24 @@ public class SmsModule extends ReactContextBaseJavaModule {
         return "SmsModule";
     }
 
-    @ReactMethod
-    public void getSmsMessages(Promise promise) {
+    private java.util.HashMap<String, WritableMap> loadMlMap() {
+        java.util.HashMap<String, WritableMap> mlMap = new java.util.HashMap<>();
         try {
-            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
-            Uri uri = Uri.parse("content://sms");
-            String[] projection = { "_id", "address", "body", "date", "type", "read" };
-
-            // Fetch mapping from our SQLite ML DB
             MlDatabaseHelper dbHelper = new MlDatabaseHelper(getReactApplicationContext());
             android.database.sqlite.SQLiteDatabase db = dbHelper.getReadableDatabase();
-
-            Cursor mlCursor = db.query(MlMetadataContract.FeedEntry.TABLE_NAME,
+            Cursor mlCursor = db.query(
+                MlMetadataContract.FeedEntry.TABLE_NAME,
                 new String[]{
                     MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS,
                     MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP,
                     MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM,
                     MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY,
                     MlMetadataContract.FeedEntry.COLUMN_NAME_CONFIDENCE
-                }, null, null, null, null,
-                MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP + " DESC"); // newest first
+                },
+                null, null, null, null,
+                MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP + " DESC"
+            );
 
-            // Key by address + timestamp so each SMS gets its own ML category
-            java.util.HashMap<String, WritableMap> mlMap = new java.util.HashMap<>();
             if (mlCursor != null) {
                 while (mlCursor.moveToNext()) {
                     String addr = mlCursor.getString(0);
@@ -72,6 +100,214 @@ public class SmsModule extends ReactContextBaseJavaModule {
                 }
                 mlCursor.close();
             }
+        } catch (Exception e) {
+            android.util.Log.w("SmsModule", "ML map load failed: " + e.getMessage());
+        }
+        return mlMap;
+    }
+
+    private void attachMlData(WritableMap smsMap, String address, String date, java.util.HashMap<String, WritableMap> mlMap) {
+        String mlKey = address + "_" + date;
+        if (mlMap.containsKey(mlKey)) {
+            WritableMap mlData = mlMap.get(mlKey);
+            smsMap.putBoolean("is_spam", mlData.getBoolean("is_spam"));
+            smsMap.putString("category", mlData.getString("category"));
+            smsMap.putDouble("confidence", mlData.getDouble("confidence"));
+        } else {
+            smsMap.putBoolean("is_spam", false);
+            smsMap.putString("category", "unknown");
+        }
+    }
+
+    private String formatTime(long timestamp) {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("hh:mm a", java.util.Locale.getDefault());
+        return sdf.format(new java.util.Date(timestamp));
+    }
+
+    private int getUnreadCountForAddress(ContentResolver contentResolver, String address) {
+        Uri uri = Uri.parse("content://sms");
+        String selection = "address = ? AND read = 0 AND type = 1";
+        String[] selectionArgs = { address };
+        Cursor cursor = contentResolver.query(uri, new String[] { "_id" }, selection, selectionArgs, null);
+        int count = 0;
+        if (cursor != null) {
+            count = cursor.getCount();
+            cursor.close();
+        }
+        return count;
+    }
+
+    @ReactMethod
+    public void getConversationsPaginated(int page, int limit, ReadableArray excludeAddresses, Promise promise) {
+        try {
+            java.util.HashSet<String> excluded = new java.util.HashSet<>();
+            if (excludeAddresses != null) {
+                for (int i = 0; i < excludeAddresses.size(); i++) {
+                    String value = excludeAddresses.getString(i);
+                    if (value != null) {
+                        excluded.add(value);
+                    }
+                }
+            }
+
+            int skip = Math.max(0, (page - 1) * limit);
+            java.util.LinkedHashMap<String, WritableMap> conversations = new java.util.LinkedHashMap<>();
+            java.util.HashMap<String, WritableMap> mlMap = loadMlMap();
+
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            Uri uri = Uri.parse("content://sms");
+            String[] projection = { "_id", "address", "body", "date", "type", "read" };
+            Cursor cursor = contentResolver.query(uri, projection, null, null, "date DESC");
+
+            int skipped = 0;
+            boolean hasMore = false;
+
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    String address = cursor.getString(cursor.getColumnIndexOrThrow("address"));
+                    if (address == null || excluded.contains(address)) {
+                        continue;
+                    }
+
+                    if (!conversations.containsKey(address)) {
+                        if (skipped < skip) {
+                            skipped++;
+                            continue;
+                        }
+
+                        if (conversations.size() >= limit) {
+                            hasMore = true;
+                            break;
+                        }
+
+                        String body = cursor.getString(cursor.getColumnIndexOrThrow("body"));
+                        String date = cursor.getString(cursor.getColumnIndexOrThrow("date"));
+                        long rawTime = cursor.getLong(cursor.getColumnIndexOrThrow("date"));
+
+                        WritableMap conv = Arguments.createMap();
+                        conv.putString("id", address);
+                        conv.putString("name", address);
+                        conv.putString("avatar", address.length() > 0 ? address.substring(0, 1) : "?");
+                        conv.putString("lastMessage", body != null ? body : "");
+                        conv.putDouble("rawTime", (double) rawTime);
+                        conv.putString("time", formatTime(rawTime));
+                        conv.putInt("unread", 0);
+
+                        String mlKey = address + "_" + date;
+                        if (mlMap.containsKey(mlKey)) {
+                            WritableMap mlData = mlMap.get(mlKey);
+                            conv.putString("category", mlData.getString("category"));
+                            conv.putBoolean("isSpam", mlData.getBoolean("is_spam"));
+                        } else {
+                            conv.putString("category", "unknown");
+                            conv.putBoolean("isSpam", false);
+                        }
+
+                        conversations.put(address, conv);
+                    }
+                }
+
+                if (!hasMore && conversations.size() >= limit) {
+                    while (cursor.moveToNext()) {
+                        String address = cursor.getString(cursor.getColumnIndexOrThrow("address"));
+                        if (address != null && !excluded.contains(address) && !conversations.containsKey(address)) {
+                            hasMore = true;
+                            break;
+                        }
+                    }
+                }
+
+                cursor.close();
+            }
+
+            for (String address : conversations.keySet()) {
+                int unread = getUnreadCountForAddress(contentResolver, address);
+                conversations.get(address).putInt("unread", unread);
+            }
+
+            WritableArray result = Arguments.createArray();
+            for (WritableMap conv : conversations.values()) {
+                result.pushMap(conv);
+            }
+
+            WritableMap response = Arguments.createMap();
+            response.putArray("conversations", result);
+            response.putBoolean("hasMore", hasMore);
+            response.putInt("page", page);
+            promise.resolve(response);
+        } catch (Exception e) {
+            promise.reject("CONVERSATIONS_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getChatMessagesPaginated(String address, int page, int limit, Promise promise) {
+        try {
+            int offset = Math.max(0, (page - 1) * limit);
+            java.util.HashMap<String, WritableMap> mlMap = loadMlMap();
+
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            Uri uri = Uri.parse("content://sms");
+            String[] projection = { "_id", "address", "body", "date", "type", "read" };
+            String selection = "address = ?";
+            String[] selectionArgs = { address };
+            String sortOrder = "date DESC LIMIT " + limit + " OFFSET " + offset;
+
+            Cursor cursor = contentResolver.query(uri, projection, selection, selectionArgs, sortOrder);
+            WritableArray smsArray = Arguments.createArray();
+
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    WritableMap smsMap = Arguments.createMap();
+                    String date = cursor.getString(cursor.getColumnIndexOrThrow("date"));
+                    String body = cursor.getString(cursor.getColumnIndexOrThrow("body"));
+
+                    smsMap.putString("_id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
+                    smsMap.putString("id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
+                    smsMap.putString("address", address);
+                    smsMap.putString("body", body != null ? body : "");
+                    smsMap.putString("date", date);
+                    smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
+                    smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
+                    attachMlData(smsMap, address, date, mlMap);
+                    smsArray.pushMap(smsMap);
+                }
+                cursor.close();
+            }
+
+            boolean hasMore = smsArray.size() >= limit;
+            WritableMap response = Arguments.createMap();
+            response.putArray("messages", smsArray);
+            response.putBoolean("hasMore", hasMore);
+            response.putInt("page", page);
+            promise.resolve(response);
+        } catch (Exception e) {
+            promise.reject("CHAT_MESSAGES_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void markAllAsRead(Promise promise) {
+        try {
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            Uri uri = Uri.parse("content://sms");
+            ContentValues values = new ContentValues();
+            values.put("read", 1);
+            int updatedRows = contentResolver.update(uri, values, "read = 0 AND type = 1", null);
+            promise.resolve(updatedRows);
+        } catch (Exception e) {
+            promise.reject("MARK_ALL_READ_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getSmsMessages(Promise promise) {
+        try {
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            Uri uri = Uri.parse("content://sms");
+            String[] projection = { "_id", "address", "body", "date", "type", "read" };
+
+            java.util.HashMap<String, WritableMap> mlMap = loadMlMap();
 
             Cursor cursor = contentResolver.query(uri, projection, null, null, "date DESC");
             WritableArray smsArray = Arguments.createArray();
@@ -90,17 +326,7 @@ public class SmsModule extends ReactContextBaseJavaModule {
                     smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
                     smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
 
-                    String mlKey = address + "_" + date;
-                    if (mlMap.containsKey(mlKey)) {
-                        WritableMap mlData = mlMap.get(mlKey);
-                        String category = mlData.getString("category");
-                        smsMap.putBoolean("is_spam", mlData.getBoolean("is_spam"));
-                        smsMap.putString("category", category);
-                        smsMap.putDouble("confidence", mlData.getDouble("confidence"));
-                    } else {
-                        smsMap.putBoolean("is_spam", false);
-                        smsMap.putString("category", "unknown");
-                    }
+                    attachMlData(smsMap, address, date, mlMap);
 
                     smsArray.pushMap(smsMap);
                 }
@@ -117,15 +343,19 @@ public class SmsModule extends ReactContextBaseJavaModule {
     public void sendSms(String phoneNumber, String message, Promise promise) {
         try {
             SmsManager smsManager = SmsManager.getDefault();
-            smsManager.sendTextMessage(phoneNumber, null, message, null, null);
+            ArrayList<String> parts = smsManager.divideMessage(message);
+            if (parts.size() <= 1) {
+                smsManager.sendTextMessage(phoneNumber, null, message, null, null);
+            } else {
+                smsManager.sendMultipartTextMessage(phoneNumber, null, parts, null, null);
+            }
 
-            // Add to sent messages
             ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
             ContentValues values = new ContentValues();
             values.put("address", phoneNumber);
             values.put("body", message);
             values.put("date", System.currentTimeMillis());
-            values.put("type", 2); // Sent message
+            values.put("type", 2);
             values.put("read", 1);
 
             Uri uri = Uri.parse("content://sms/sent");
@@ -134,6 +364,146 @@ public class SmsModule extends ReactContextBaseJavaModule {
             promise.resolve("SMS sent successfully");
         } catch (Exception e) {
             promise.reject("SMS_SEND_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void markAsUnread(String address, Promise promise) {
+        try {
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            Uri uri = Uri.parse("content://sms");
+            ContentValues values = new ContentValues();
+            values.put("read", 0);
+            String selection = "address = ? AND type = 1";
+            String[] selectionArgs = { address };
+            int updatedRows = contentResolver.update(uri, values, selection, selectionArgs);
+            promise.resolve(updatedRows);
+        } catch (Exception e) {
+            promise.reject("MARK_UNREAD_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getInitialIntentData(Promise promise) {
+        try {
+            WritableMap map = Arguments.createMap();
+            Activity activity = getCurrentActivity();
+            if (activity != null && activity.getIntent() != null) {
+                Intent intent = activity.getIntent();
+                String sender = intent.getStringExtra("sender");
+                if (sender != null && !sender.isEmpty()) {
+                    map.putString("contactId", sender);
+                }
+                Uri data = intent.getData();
+                if (data != null) {
+                    String scheme = data.getScheme();
+                    if ("sms".equals(scheme) || "smsto".equals(scheme)) {
+                        String phone = data.getSchemeSpecificPart();
+                        if (phone != null) {
+                            if (phone.contains("?")) {
+                                phone = phone.split("\\?")[0];
+                            }
+                            map.putString("contactId", phone);
+                        }
+                        String body = data.getQueryParameter("body");
+                        if (body != null) {
+                            map.putString("body", body);
+                        }
+                    }
+                }
+                intent.removeExtra("sender");
+            }
+            promise.resolve(map);
+        } catch (Exception e) {
+            promise.reject("INTENT_DATA_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getAllContacts(Promise promise) {
+        try {
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            WritableArray contacts = Arguments.createArray();
+            java.util.HashSet<String> seen = new java.util.HashSet<>();
+
+            Cursor cursor = contentResolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                new String[] {
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                    ContactsContract.CommonDataKinds.Phone.NUMBER
+                },
+                null,
+                null,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            );
+
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    String name = cursor.getString(0);
+                    String number = cursor.getString(1);
+                    if (number == null || number.isEmpty()) {
+                        continue;
+                    }
+                    String normalized = number.replaceAll("[^0-9+]", "");
+                    String key = normalized + "|" + (name != null ? name : "");
+                    if (seen.contains(key)) {
+                        continue;
+                    }
+                    seen.add(key);
+                    WritableMap contact = Arguments.createMap();
+                    contact.putString("id", normalized);
+                    contact.putString("name", name != null && !name.isEmpty() ? name : normalized);
+                    contact.putString("phone", normalized);
+                    contacts.pushMap(contact);
+                    if (contacts.size() >= 500) {
+                        break;
+                    }
+                }
+                cursor.close();
+            }
+
+            promise.resolve(contacts);
+        } catch (Exception e) {
+            promise.reject("CONTACTS_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void searchMessages(String query, int limit, Promise promise) {
+        try {
+            if (query == null || query.trim().isEmpty()) {
+                promise.resolve(Arguments.createArray());
+                return;
+            }
+
+            String like = "%" + query.trim() + "%";
+            ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+            Uri uri = Uri.parse("content://sms");
+            String[] projection = { "_id", "address", "body", "date", "type", "read" };
+            String selection = "body LIKE ? OR address LIKE ?";
+            String[] selectionArgs = { like, like };
+            String sortOrder = "date DESC LIMIT " + Math.max(1, Math.min(limit, 100));
+
+            Cursor cursor = contentResolver.query(uri, projection, selection, selectionArgs, sortOrder);
+            WritableArray results = Arguments.createArray();
+
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    WritableMap smsMap = Arguments.createMap();
+                    smsMap.putString("_id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
+                    smsMap.putString("address", cursor.getString(cursor.getColumnIndexOrThrow("address")));
+                    smsMap.putString("body", cursor.getString(cursor.getColumnIndexOrThrow("body")));
+                    smsMap.putString("date", cursor.getString(cursor.getColumnIndexOrThrow("date")));
+                    smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
+                    smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
+                    results.pushMap(smsMap);
+                }
+                cursor.close();
+            }
+
+            promise.resolve(results);
+        } catch (Exception e) {
+            promise.reject("SEARCH_ERROR", e.getMessage());
         }
     }
 

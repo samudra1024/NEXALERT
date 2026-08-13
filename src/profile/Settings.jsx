@@ -124,13 +124,32 @@ export default function Settings() {
                     />
                 </View>
 
+                {/* SMS Management */}
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Messages</Text>
+                <View style={styles.sectionContainer}>
+                    <SettingLink
+                        label="Spam Folder"
+                        icon={<Shield size={20} color={theme.primary} />}
+                        onPress={() => navigation.navigate('Spam')}
+                    />
+                    <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                    <SettingLink
+                        label="Blocked Contacts"
+                        icon={<Shield size={20} color={theme.primary} />}
+                        onPress={() => navigation.navigate('Blocked')}
+                    />
+                </View>
+
                 {/* Help & Feedback Section (moved from YourProfile menu) */}
                 <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Support</Text>
                 <View style={styles.sectionContainer}>
                     <SettingLink
                         label="Help & Feedback"
                         icon={<HelpCircle size={20} color={theme.primary} />}
-                        onPress={() => navigation.navigate('HelpandFeedback')}
+                        onPress={() => showModal(
+                            'Help & Feedback',
+                            'For support, contact the NEXALERT team or report issues from the app store listing. Make sure SMS permissions and default SMS app role are enabled for full functionality.'
+                        )}
                     />
                 </View>
 

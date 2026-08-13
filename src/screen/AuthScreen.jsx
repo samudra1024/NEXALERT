@@ -18,10 +18,19 @@ import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { BaseURL } from '../config/API';
 import { useTheme } from '../context/ThemeContext';
+import ScalePressable from '../components/animations/ScalePressable';
 
 import OTP_ILLUSTRATION from '../assets/images/OTP.png';
 
 const { width } = Dimensions.get('window');
+const CARD_WIDTH = Math.min(380, width - 48);
+const CARD_HORIZONTAL_PADDING = 28;
+const OTP_GAP = 10;
+const OTP_COUNT = 6;
+const OTP_BOX_SIZE = Math.floor(
+  (CARD_WIDTH - CARD_HORIZONTAL_PADDING * 2 - OTP_GAP * (OTP_COUNT - 1)) / OTP_COUNT,
+);
+const OTP_FONT_SIZE = OTP_BOX_SIZE < 40 ? 16 : 18;
 
 export default function AuthScreen() {
   const navigation = useNavigation();
@@ -40,6 +49,7 @@ export default function AuthScreen() {
   const [otpLoading, setOtpLoading] = useState(false);
   const [timer, setTimer] = useState(120);
   const [resendActive, setResendActive] = useState(false);
+  const [focusedOtpIndex, setFocusedOtpIndex] = useState(0);
   const otpInputs = useRef([]);
 
   // ── Timer effect (only runs while on Step 2) ──
@@ -55,6 +65,15 @@ export default function AuthScreen() {
     }, 1000);
     return () => clearInterval(interval);
   }, [timer, currentStep]);
+
+  useEffect(() => {
+    if (currentStep !== 1) return;
+    setFocusedOtpIndex(0);
+    const focusTimer = setTimeout(() => {
+      otpInputs.current[0]?.focus();
+    }, 350);
+    return () => clearTimeout(focusTimer);
+  }, [currentStep]);
 
   // ── Fade helper ──
   const animateToStep = (nextStep) => {
@@ -114,12 +133,42 @@ export default function AuthScreen() {
   // ────────────────────────────── Step 2 handlers ──────────────────────────────
 
   const handleOtpChange = (text, index) => {
-    if (text.length > 1) return;
+    const digits = text.replace(/\D/g, '');
+
+    if (digits.length > 1) {
+      const newOtp = [...otp];
+      const pastedDigits = digits.slice(0, OTP_COUNT - index).split('');
+      pastedDigits.forEach((digit, offset) => {
+        newOtp[index + offset] = digit;
+      });
+      setOtp(newOtp);
+      const nextIndex = Math.min(index + pastedDigits.length, OTP_COUNT - 1);
+      otpInputs.current[nextIndex]?.focus();
+      setFocusedOtpIndex(nextIndex);
+      return;
+    }
+
     const newOtp = [...otp];
-    newOtp[index] = text;
+    newOtp[index] = digits;
     setOtp(newOtp);
-    if (text && index < otp.length - 1) {
+
+    if (digits && index < otp.length - 1) {
       otpInputs.current[index + 1]?.focus();
+      setFocusedOtpIndex(index + 1);
+    }
+  };
+
+  const handleOtpKeyPress = (event, index) => {
+    if (event.nativeEvent.key !== 'Backspace') return;
+
+    if (otp[index]) return;
+
+    if (index > 0) {
+      const newOtp = [...otp];
+      newOtp[index - 1] = '';
+      setOtp(newOtp);
+      otpInputs.current[index - 1]?.focus();
+      setFocusedOtpIndex(index - 1);
     }
   };
 
@@ -154,8 +203,10 @@ export default function AuthScreen() {
 
       if (response.data.success) {
         Alert.alert('OTP verified successfully!');
-        // Navigate to ChatsList after successful verification
-        navigation.navigate('ChatsList');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'ChatsList' }],
+        });
       } else {
         Alert.alert('Failed to verify OTP. Please try again.');
       }
@@ -192,11 +243,11 @@ export default function AuthScreen() {
       {phoneLoading ? (
         <ActivityIndicator size="large" color={theme.primary} />
       ) : (
-        <TouchableOpacity
+        <ScalePressable
           style={[styles.button, { backgroundColor: theme.primary }]}
           onPress={handleGetOtp}>
           <Text style={styles.buttonText}>Get OTP</Text>
-        </TouchableOpacity>
+        </ScalePressable>
       )}
       <View style={styles.footerText}>
         <Text style={styles.footerNormalText}>Don't have an account? </Text>
@@ -223,15 +274,29 @@ export default function AuthScreen() {
           {otp.map((digit, idx) => (
             <TextInput
               key={idx}
-              style={styles.otpInput}
+              style={[
+                styles.otpInput,
+                {
+                  width: OTP_BOX_SIZE,
+                  height: OTP_BOX_SIZE + 6,
+                  fontSize: OTP_FONT_SIZE,
+                  lineHeight: OTP_FONT_SIZE + 4,
+                },
+                focusedOtpIndex === idx && styles.otpInputFocused,
+                digit.length > 0 && styles.otpInputFilled,
+              ]}
               keyboardType="number-pad"
-              maxLength={1}
+              maxLength={idx === 0 ? OTP_COUNT : 1}
               value={digit}
               onChangeText={text => handleOtpChange(text, idx)}
+              onKeyPress={event => handleOtpKeyPress(event, idx)}
+              onFocus={() => setFocusedOtpIndex(idx)}
               ref={ref => (otpInputs.current[idx] = ref)}
               editable={!otpLoading}
-              selectionColor="black"
+              selectionColor="#222"
               placeholderTextColor="#999"
+              returnKeyType="done"
+              caretHidden={false}
             />
           ))}
         </View>
@@ -244,39 +309,43 @@ export default function AuthScreen() {
             otpLoading && { backgroundColor: '#cccccc' },
           ]}
           onPress={handleVerifyOtp}
-          disabled={otpLoading}>
+          disabled={otpLoading}
+          activeOpacity={0.85}>
           <Text style={styles.submitText}>
             {otpLoading ? 'Loading...' : 'Verify'}
           </Text>
         </TouchableOpacity>
 
-        {/* RESEND OTP */}
-        <View style={{ alignItems: 'center', width: '100%' }}>
+        {/* RESEND OTP + CHANGE NUMBER */}
+        <View style={styles.otpFooter}>
           {resendActive ? (
-            <TouchableOpacity onPress={handleResend} disabled={otpLoading}>
+            <ScalePressable
+              onPress={otpLoading ? undefined : handleResend}
+              style={styles.footerActionWrap}
+              scaleTo={0.97}>
               <Text style={[styles.resendLink, { color: theme.primary }]}>
                 Resend OTP
               </Text>
-            </TouchableOpacity>
+            </ScalePressable>
           ) : (
             <Text style={styles.resendText}>
               Resend OTP in {Math.floor(timer / 60)}:
               {(timer % 60).toString().padStart(2, '0')}
             </Text>
           )}
-        </View>
 
-        {/* BACK TO CHANGE NUMBER */}
-        <TouchableOpacity
-          style={styles.changeNumberBtn}
-          onPress={() => {
-            setOtp(['', '', '', '', '', '']);
-            animateToStep(0);
-          }}>
-          <Text style={[styles.changeNumberText, { color: theme.primary }]}>
-            Change Number
-          </Text>
-        </TouchableOpacity>
+          <ScalePressable
+            style={styles.footerActionWrap}
+            scaleTo={0.97}
+            onPress={() => {
+              setOtp(['', '', '', '', '', '']);
+              animateToStep(0);
+            }}>
+            <Text style={[styles.changeNumberText, { color: theme.primary }]}>
+              Change Number
+            </Text>
+          </ScalePressable>
+        </View>
       </View>
     </View>
   );
@@ -311,7 +380,8 @@ const styles = StyleSheet.create({
   /* ── Step 1 (Phone) ── */
   content: {
     flex: 1,
-    padding: 24,
+    paddingHorizontal: 28,
+    paddingVertical: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -319,24 +389,26 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     resizeMode: 'contain',
-    marginBottom: 40,
+    marginBottom: 32,
     borderRadius: 50,
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
     color: '#000',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
     color: '#828282',
     textAlign: 'center',
-    marginBottom: 40,
+    lineHeight: 24,
+    marginBottom: 32,
+    paddingHorizontal: 8,
   },
   inputContainer: {
     width: '100%',
-    marginBottom: 24,
+    marginBottom: 28,
   },
   inputLabel: {
     position: 'absolute',
@@ -361,8 +433,8 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     backgroundColor: '#2563eb',
-    paddingVertical: 16,
-    borderRadius: 8,
+    paddingVertical: 15,
+    borderRadius: 10,
     alignItems: 'center',
   },
   buttonText: {
@@ -372,7 +444,7 @@ const styles = StyleSheet.create({
   },
   footerText: {
     flexDirection: 'row',
-    marginTop: 20,
+    marginTop: 24,
   },
   footerNormalText: {
     fontSize: 14,
@@ -389,13 +461,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    paddingHorizontal: 24,
+    paddingVertical: 32,
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 20,
-    padding: 30,
-    width: Math.min(380, width - 40),
+    paddingVertical: 32,
+    paddingHorizontal: CARD_HORIZONTAL_PADDING,
+    width: CARD_WIDTH,
     alignItems: 'center',
     elevation: 5,
     shadowColor: '#000',
@@ -404,23 +478,25 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
   },
   otpImage: {
-    width: 140,
-    height: 140,
-    marginBottom: 20,
+    width: 130,
+    height: 130,
+    marginBottom: 24,
     borderRadius: 10,
     backgroundColor: '#f5f5f5',
   },
   otpTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 8,
+    marginBottom: 10,
     color: '#222',
   },
   otpSubtitle: {
     fontSize: 15,
     color: '#444',
-    marginBottom: 22,
+    marginBottom: 28,
     textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 4,
   },
   bold: {
     fontWeight: 'bold',
@@ -428,44 +504,63 @@ const styles = StyleSheet.create({
   },
   otpContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 22,
+    justifyContent: 'center',
+    gap: OTP_GAP,
+    marginBottom: 28,
     width: '100%',
   },
   otpInput: {
     borderWidth: 2,
     borderColor: '#bcd0ff',
-    borderRadius: 8,
-    width: 40,
-    height: 45,
+    borderRadius: 10,
     textAlign: 'center',
-    fontSize: 18,
+    fontWeight: '600',
+    color: '#222',
     backgroundColor: '#f7faff',
-    marginHorizontal: 5,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    ...(Platform.OS === 'android' && {
+      textAlignVertical: 'center',
+      includeFontPadding: false,
+    }),
+  },
+  otpInputFocused: {
+    borderWidth: 3,
+  },
+  otpInputFilled: {
+    borderWidth: 2.5,
   },
   submitBtn: {
     backgroundColor: '#298cff',
-    borderRadius: 8,
-    paddingVertical: 12,
-    width: '90%',
+    borderRadius: 10,
+    paddingVertical: 14,
+    width: '100%',
     alignItems: 'center',
-    marginBottom: 18,
+    marginBottom: 20,
   },
   submitText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
   },
+  otpFooter: {
+    alignItems: 'center',
+    width: '100%',
+    gap: 14,
+  },
+  footerActionWrap: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
   resendText: {
     color: '#888',
     fontSize: 14,
+    paddingVertical: 6,
   },
   resendLink: {
     color: '#298cff',
     fontWeight: 'bold',
-  },
-  changeNumberBtn: {
-    marginTop: 12,
+    fontSize: 14,
   },
   changeNumberText: {
     fontSize: 14,

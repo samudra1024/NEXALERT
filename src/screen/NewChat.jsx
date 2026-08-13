@@ -50,9 +50,22 @@ export default function NewChat() {
   const loadContacts = async () => {
     try {
       setLoading(true);
-      // Use existing conversations as contacts source
-      const result = await SmsController.getConversations(1, 500);
-      setContacts(result.conversations || []);
+      const [deviceContacts, conversationsResult] = await Promise.all([
+        SmsController.getAllContacts(),
+        SmsController.getConversations(1, 50),
+      ]);
+
+      const merged = new Map();
+      (conversationsResult.conversations || []).forEach(c => {
+        merged.set(c.id, { id: c.id, name: c.name, source: 'sms' });
+      });
+      (deviceContacts || []).forEach(c => {
+        if (!merged.has(c.id)) {
+          merged.set(c.id, { id: c.id, name: c.name, source: 'phone' });
+        }
+      });
+
+      setContacts(Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
       console.error('Error loading contacts:', error);
     } finally {

@@ -1,11 +1,21 @@
-import { PermissionsAndroid, Platform, NativeModules, Share } from 'react-native';
+import { PermissionsAndroid, Platform, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { SmsModule } = NativeModules;
 
-class SmsController {
+const DEFAULT_PAGE_SIZE = 25;
+const SMS_CACHE_TTL_MS = 60 * 1000;
 
-  // Request all SMS permissions
+class SmsController {
+  static _smsCache = null;
+  static _smsCacheTimestamp = 0;
+  static _permissionsGranted = false;
+
+  static clearCache() {
+    this._smsCache = null;
+    this._smsCacheTimestamp = 0;
+  }
+
   static async requestAllSmsPermissions() {
     if (Platform.OS === 'android') {
       try {
@@ -16,133 +26,397 @@ class SmsController {
           PermissionsAndroid.PERMISSIONS.RECEIVE_MMS,
         ];
 
-        // Add notification permission for Android 13+
         if (Platform.Version >= 33) {
           smsPermissions.push(PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS);
         }
 
-        // Also request contacts permission (non-blocking for SMS)
         const allPermissions = [...smsPermissions, PermissionsAndroid.PERMISSIONS.READ_CONTACTS];
-
         const granted = await PermissionsAndroid.requestMultiple(allPermissions);
-
-        // Only check SMS permissions — contacts is optional
         const smsGranted = smsPermissions.every(
-          p => granted[p] === PermissionsAndroid.RESULTS.GRANTED
+          p => granted[p] === PermissionsAndroid.RESULTS.GRANTED,
         );
 
+        this._permissionsGranted = smsGranted;
         return smsGranted;
       } catch (err) {
         console.warn('Permission error:', err);
         return false;
       }
     }
+    this._permissionsGranted = true;
     return true;
   }
 
-  // Fetch SMS messages
-  static async fetchSmsMessages() {
+  static async ensurePermissions() {
+    if (this._permissionsGranted) {
+      return true;
+    }
+    return this.requestAllSmsPermissions();
+  }
+
+  static async fetchSmsMessages(forceRefresh = false) {
     try {
-      const hasPermission = await this.requestAllSmsPermissions();
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        this._smsCache &&
+        now - this._smsCacheTimestamp < SMS_CACHE_TTL_MS
+      ) {
+        return this._smsCache;
+      }
+
+      const hasPermission = await this.ensurePermissions();
       if (!hasPermission) {
         throw new Error('SMS permissions denied');
       }
 
       const messages = await SmsModule.getSmsMessages();
-      return messages.map(msg => ({
+      const normalized = messages.map(msg => ({
         ...msg,
-        date: parseInt(msg.date),
-        type: parseInt(msg.type),
-        read: parseInt(msg.read)
+        _id: msg._id || msg.id,
+        date: parseInt(msg.date, 10),
+        type: parseInt(msg.type, 10),
+        read: parseInt(msg.read, 10),
       }));
+
+      this._smsCache = normalized;
+      this._smsCacheTimestamp = now;
+      return normalized;
     } catch (error) {
       console.error('Error fetching SMS:', error);
       throw error;
     }
   }
 
-  // Helper to get avatar color
   static getAvatarColor(address) {
     const colors = ['#2563eb', '#fd79a8', '#fdcb6e', '#e17055', '#1d4ed8', '#00b894'];
-    const index = address.charCodeAt(0) % colors.length;
+    const index = (address || '?').charCodeAt(0) % colors.length;
     return colors[index];
   }
 
-  // Get conversations (grouped by address) with pagination
-  static async getConversations(page = 1, limit = 20) {
-    try {
-      const messages = await this.fetchSmsMessages();
+  static decorateConversation(conv) {
+    return {
+      ...conv,
+      avatarColor: this.getAvatarColor(conv.id),
+      category: conv.category ?? 'unknown',
+    };
+  }
 
-      // Group by address
+  static async getExcludedAddresses() {
+    const [recycledIds, archivedIds, blockedIds] = await Promise.all([
+      this.getRecycledMessageIds(),
+      this.getArchivedMessageIds(),
+      this.getBlockedNumbers(),
+    ]);
+    return [...new Set([...recycledIds, ...archivedIds, ...blockedIds])];
+  }
+
+  static BLOCKED_KEY = 'blocked_sms_numbers';
+  static STARRED_KEY = 'starred_sms_ids';
+  static DRAFTS_KEY = 'sms_drafts';
+  static PINNED_KEY = 'pinned_conversations';
+
+  static async getBlockedNumbers() {
+    try {
+      const json = await AsyncStorage.getItem(this.BLOCKED_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static async blockNumber(address) {
+    const blocked = await this.getBlockedNumbers();
+    if (!blocked.includes(address)) {
+      blocked.push(address);
+      await AsyncStorage.setItem(this.BLOCKED_KEY, JSON.stringify(blocked));
+    }
+    return true;
+  }
+
+  static async unblockNumber(address) {
+    const blocked = (await this.getBlockedNumbers()).filter(id => id !== address);
+    await AsyncStorage.setItem(this.BLOCKED_KEY, JSON.stringify(blocked));
+    return true;
+  }
+
+  static async getStarredMessageIds() {
+    try {
+      const json = await AsyncStorage.getItem(this.STARRED_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static async starMessage(messageId) {
+    const starred = await this.getStarredMessageIds();
+    if (!starred.includes(messageId)) {
+      starred.push(messageId);
+      await AsyncStorage.setItem(this.STARRED_KEY, JSON.stringify(starred));
+    }
+    return true;
+  }
+
+  static async unstarMessage(messageId) {
+    const starred = (await this.getStarredMessageIds()).filter(id => id !== messageId);
+    await AsyncStorage.setItem(this.STARRED_KEY, JSON.stringify(starred));
+    return true;
+  }
+
+  static async getDraft(address) {
+    try {
+      const json = await AsyncStorage.getItem(this.DRAFTS_KEY);
+      const drafts = json ? JSON.parse(json) : {};
+      return drafts[address] || '';
+    } catch {
+      return '';
+    }
+  }
+
+  static async saveDraft(address, text) {
+    try {
+      const json = await AsyncStorage.getItem(this.DRAFTS_KEY);
+      const drafts = json ? JSON.parse(json) : {};
+      if (text && text.trim()) {
+        drafts[address] = text.trim();
+      } else {
+        delete drafts[address];
+      }
+      await AsyncStorage.setItem(this.DRAFTS_KEY, JSON.stringify(drafts));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async getPinnedConversations() {
+    try {
+      const json = await AsyncStorage.getItem(this.PINNED_KEY);
+      return json ? JSON.parse(json) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  static async pinConversation(address) {
+    const pinned = await this.getPinnedConversations();
+    if (!pinned.includes(address)) {
+      pinned.unshift(address);
+      await AsyncStorage.setItem(this.PINNED_KEY, JSON.stringify(pinned));
+    }
+    return true;
+  }
+
+  static async unpinConversation(address) {
+    const pinned = (await this.getPinnedConversations()).filter(id => id !== address);
+    await AsyncStorage.setItem(this.PINNED_KEY, JSON.stringify(pinned));
+    return true;
+  }
+
+  static async markAsUnread(address) {
+    if (SmsModule.markAsUnread) {
+      await SmsModule.markAsUnread(address);
+      return true;
+    }
+    return false;
+  }
+
+  static async deleteConversation(address) {
+    const messages = await this.fetchSmsMessages(true);
+    const ids = messages.filter(m => m.address === address).map(m => m._id);
+    if (ids.length > 0) {
+      await this.deleteSms(ids);
+    }
+    await this.unpinConversation(address);
+    await this.saveDraft(address, '');
+    return true;
+  }
+
+  static async getAllContacts() {
+    await this.ensurePermissions();
+    if (SmsModule.getAllContacts) {
+      return SmsModule.getAllContacts();
+    }
+    return [];
+  }
+
+  static async searchMessages(query, limit = 50) {
+    await this.ensurePermissions();
+    if (SmsModule.searchMessages) {
+      const results = await SmsModule.searchMessages(query, limit);
+      return results.map(msg => ({
+        ...msg,
+        _id: msg._id || msg.id,
+        date: parseInt(msg.date, 10),
+        type: parseInt(msg.type, 10),
+        read: parseInt(msg.read, 10),
+      }));
+    }
+    const messages = await this.fetchSmsMessages();
+    const lower = query.toLowerCase();
+    return messages
+      .filter(m => (m.body || '').toLowerCase().includes(lower) || (m.address || '').includes(query))
+      .slice(0, limit);
+  }
+
+  static async getInitialIntentData() {
+    if (SmsModule.getInitialIntentData) {
+      return SmsModule.getInitialIntentData();
+    }
+    return {};
+  }
+
+  static applyConversationFilters(conversations, filter, blocked, pinned) {
+    let result = conversations;
+
+    if (filter === 'spam') {
+      result = result.filter(c => c.isSpam);
+    } else if (filter === 'inbox') {
+      result = result.filter(c => !c.isSpam);
+    }
+
+    if (filter !== 'blocked') {
+      result = result.filter(c => !blocked.includes(c.id));
+    }
+
+    const pinSet = new Set(pinned);
+    return [...result].sort((a, b) => {
+      const aPinned = pinSet.has(a.id) ? 1 : 0;
+      const bPinned = pinSet.has(b.id) ? 1 : 0;
+      if (aPinned !== bPinned) {
+        return bPinned - aPinned;
+      }
+      return (b.rawTime || 0) - (a.rawTime || 0);
+    });
+  }
+
+  static async getConversations(page = 1, limit = DEFAULT_PAGE_SIZE, filter = 'inbox') {
+    try {
+      const hasPermission = await this.ensurePermissions();
+      if (!hasPermission) {
+        throw new Error('SMS permissions denied');
+      }
+
+      const excludeAddresses = await this.getExcludedAddresses();
+
+      if (SmsModule.getConversationsPaginated) {
+        const result = await SmsModule.getConversationsPaginated(
+          page,
+          limit,
+          excludeAddresses,
+        );
+
+        const conversations = this.applyConversationFilters(
+          (result.conversations || []).map(conv =>
+            this.decorateConversation({
+              ...conv,
+              rawTime: conv.rawTime ?? 0,
+              unread: conv.unread ?? 0,
+              isSpam: !!conv.isSpam,
+            }),
+          ),
+          filter,
+          await this.getBlockedNumbers(),
+          await this.getPinnedConversations(),
+        );
+
+        return {
+          conversations: await this.resolveContactNames(conversations),
+          hasMore: !!result.hasMore,
+          page: result.page ?? page,
+        };
+      }
+
+      const messages = await this.fetchSmsMessages();
+      const excluded = new Set(excludeAddresses);
       const conversationsMap = {};
 
-      // Sort messages by date descending first to ensuring we capture the latest
-      messages.sort((a, b) => b.date - a.date);
+      messages
+        .sort((a, b) => b.date - a.date)
+        .forEach(msg => {
+          const address = msg.address;
+          if (!address || excluded.has(address) || conversationsMap[address]) {
+            return;
+          }
 
-      messages.forEach(msg => {
-        const address = msg.address;
-
-        if (!conversationsMap[address]) {
-          conversationsMap[address] = {
+          conversationsMap[address] = this.decorateConversation({
             id: address,
-            name: address, // In a real app, resolve contact name here
+            name: address,
             avatar: address[0] || '?',
-            avatarColor: this.getAvatarColor(address),
             lastMessage: msg.body,
-            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            time: new Date(msg.date).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
             rawTime: msg.date,
             unread: 0,
             category: msg.category ?? 'unknown',
-          };
-        }
+          });
+        });
 
-        // Count unread (type 1 is received)
-        if (msg.read === 0 && msg.type === 1) {
-          conversationsMap[address].unread++;
-        }
+      const sortedConversations = Object.values(conversationsMap).sort(
+        (a, b) => b.rawTime - a.rawTime,
+      );
+      sortedConversations.forEach(conv => {
+        conv.unread = messages.filter(
+          msg => msg.address === conv.id && msg.read === 0 && msg.type === 1,
+        ).length;
       });
 
-      // Convert to array
-      const sortedConversations = Object.values(conversationsMap);
-      // Ensure conversations are sorted by latest message
-      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
-
-      // Pagination
       const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedConversations = sortedConversations.slice(startIndex, endIndex);
+      const paginatedConversations = sortedConversations.slice(
+        startIndex,
+        startIndex + limit,
+      );
 
       return {
-        conversations: paginatedConversations,
-        hasMore: endIndex < sortedConversations.length,
-        page: page
+        conversations: await this.resolveContactNames(paginatedConversations),
+        hasMore: startIndex + limit < sortedConversations.length,
+        page,
       };
-
     } catch (error) {
       console.error('Error getting conversations:', error);
       throw error;
     }
   }
 
-  // Get messages for a specific chat
-  static async getChatMessages(contactId, page = 1, limit = 20) {
+  static async getChatMessages(contactId, page = 1, limit = DEFAULT_PAGE_SIZE) {
     try {
+      const hasPermission = await this.ensurePermissions();
+      if (!hasPermission) {
+        throw new Error('SMS permissions denied');
+      }
+
+      if (SmsModule.getChatMessagesPaginated) {
+        const result = await SmsModule.getChatMessagesPaginated(contactId, page, limit);
+        const messages = (result.messages || []).map(msg => ({
+          ...msg,
+          _id: msg._id || msg.id,
+          date: parseInt(msg.date, 10),
+          type: parseInt(msg.type, 10),
+          read: parseInt(msg.read, 10),
+        }));
+
+        return {
+          messages,
+          hasMore: !!result.hasMore,
+          page: result.page ?? page,
+        };
+      }
+
       const messages = await this.fetchSmsMessages();
+      const chatMessages = messages
+        .filter(msg => msg.address === contactId)
+        .sort((a, b) => b.date - a.date);
 
-      const chatMessages = messages.filter(msg => msg.address === contactId);
-
-      // Sort by date descending (newest first)
-      chatMessages.sort((a, b) => b.date - a.date); // or b.date - a.date depending on UI needs. ChatScreen seems to expect newest first.
-
-      // Pagination
       const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedMessages = chatMessages.slice(startIndex, endIndex);
+      const paginatedMessages = chatMessages.slice(startIndex, startIndex + limit);
 
       return {
         messages: paginatedMessages,
-        hasMore: endIndex < chatMessages.length,
-        page: page
+        hasMore: startIndex + limit < chatMessages.length,
+        page,
       };
     } catch (error) {
       console.error('Error getting chat messages:', error);
@@ -150,21 +424,33 @@ class SmsController {
     }
   }
 
-  // Get starred messages
   static async getStarredMessages() {
-    // Mock implementation as native module generally doesn't support starring
-    return [];
+    return this.getStarredMessageIds();
   }
 
-  // Send SMS
+  static async getBlockedConversations() {
+    const blocked = await this.getBlockedNumbers();
+    if (blocked.length === 0) {
+      return [];
+    }
+    const messages = await this.fetchSmsMessages();
+    const blockedSet = new Set(blocked);
+    return this.buildConversationMap(messages, address => blockedSet.has(address));
+  }
+
+  static async getSpamConversations(page = 1, limit = DEFAULT_PAGE_SIZE) {
+    return this.getConversations(page, limit, 'spam');
+  }
+
   static async sendSms(phoneNumber, message) {
     try {
-      const hasPermission = await this.requestAllSmsPermissions();
+      const hasPermission = await this.ensurePermissions();
       if (!hasPermission) {
         throw new Error('SMS permissions denied');
       }
 
       await SmsModule.sendSms(phoneNumber, message);
+      this.clearCache();
       return true;
     } catch (error) {
       console.error('Error sending SMS:', error);
@@ -172,7 +458,6 @@ class SmsController {
     }
   }
 
-  // Mark messages as read
   static async markAsRead(address) {
     try {
       await SmsModule.markAsRead(address);
@@ -183,46 +468,37 @@ class SmsController {
     }
   }
 
-  // Get unread count
   static async getUnreadCount() {
     try {
-      const count = await SmsModule.getUnreadCount();
-      return count;
+      return await SmsModule.getUnreadCount();
     } catch (error) {
       console.error('Error getting unread count:', error);
       return 0;
     }
   }
 
-  // Check if app is default SMS app
   static async isDefaultSmsApp() {
     try {
-      const isDefault = await SmsModule.isDefaultSmsApp();
-      return isDefault;
+      return await SmsModule.isDefaultSmsApp();
     } catch (error) {
       console.error('Error checking default SMS app:', error);
       return false;
     }
   }
 
-  // Check if we should show default SMS prompt
   static async shouldShowDefaultPrompt() {
     try {
       const isDefault = await this.isDefaultSmsApp();
       return !isDefault;
     } catch (error) {
       console.error('Error checking if should show prompt:', error);
-      return true; // Show prompt on error to be safe
+      return true;
     }
   }
 
-  // Request to become default SMS app (proper order: role first, then permissions)
   static async requestDefaultSmsApp() {
     try {
-      // First request ROLE_SMS (modern approach for Android 11+)
       await SmsModule.requestDefaultSmsApp();
-
-      // Then request runtime permissions after role is granted
       setTimeout(async () => {
         try {
           await this.requestAllSmsPermissions();
@@ -230,7 +506,6 @@ class SmsController {
           console.warn('Runtime permissions request failed:', permError);
         }
       }, 1000);
-
       return true;
     } catch (error) {
       console.error('Error requesting default SMS app:', error);
@@ -238,7 +513,6 @@ class SmsController {
     }
   }
 
-  // Open SMS app settings
   static async openSmsAppSettings() {
     try {
       await SmsModule.openSmsAppSettings();
@@ -249,10 +523,10 @@ class SmsController {
     }
   }
 
-  // Delete SMS messages
   static async deleteSms(ids) {
     try {
       const count = await SmsModule.deleteSms(ids);
+      this.clearCache();
       return count;
     } catch (error) {
       console.error('Error deleting SMS:', error);
@@ -260,22 +534,18 @@ class SmsController {
     }
   }
 
-  // --- ARCHIVE FEATURES ---
-
   static ARCHIVE_KEY = 'archived_sms_ids';
 
-  // Get archived conversation IDs
   static async getArchivedMessageIds() {
     try {
       const json = await AsyncStorage.getItem(this.ARCHIVE_KEY);
       return json ? JSON.parse(json) : [];
     } catch (e) {
-      console.error("Error getting archived IDs", e);
+      console.error('Error getting archived IDs', e);
       return [];
     }
   }
 
-  // Archive a conversation
   static async archiveConversation(address) {
     try {
       const archived = await this.getArchivedMessageIds();
@@ -285,12 +555,11 @@ class SmsController {
       }
       return true;
     } catch (e) {
-      console.error("Error archiving conversation", e);
+      console.error('Error archiving conversation', e);
       return false;
     }
   }
 
-  // Unarchive a conversation
   static async unarchiveConversation(address) {
     try {
       let archived = await this.getArchivedMessageIds();
@@ -298,69 +567,77 @@ class SmsController {
       await AsyncStorage.setItem(this.ARCHIVE_KEY, JSON.stringify(archived));
       return true;
     } catch (e) {
-      console.error("Error unarchiving conversation", e);
+      console.error('Error unarchiving conversation', e);
       return false;
     }
   }
 
-  // Get ONLY archived conversations
+  static buildConversationMap(messages, filterFn) {
+    const conversationsMap = {};
+
+    messages.forEach(msg => {
+      const address = msg.address;
+      if (!filterFn(address)) {
+        return;
+      }
+
+      if (!conversationsMap[address]) {
+        conversationsMap[address] = {
+          id: address,
+          name: address,
+          avatar: address[0] || '?',
+          avatarColor: this.getAvatarColor(address),
+          lastMessage: msg.body,
+          time: new Date(msg.date).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          date: new Date(msg.date).toLocaleDateString(),
+          rawTime: msg.date,
+          unread: 0,
+          category: msg.category ?? 'unknown',
+        };
+      }
+
+      if (msg.read === 0 && msg.type === 1) {
+        conversationsMap[address].unread++;
+      }
+    });
+
+    const sorted = Object.values(conversationsMap);
+    sorted.sort((a, b) => b.rawTime - a.rawTime);
+    return sorted;
+  }
+
   static async getArchivedConversations() {
     try {
-      const messages = await this.fetchSmsMessages();
       const archivedIds = await this.getArchivedMessageIds();
+      if (archivedIds.length === 0) {
+        return [];
+      }
 
-      if (archivedIds.length === 0) return [];
-
-      const conversationsMap = {};
-      messages.sort((a, b) => b.date - a.date);
-
-      messages.forEach(msg => {
-        const address = msg.address;
-        if (!archivedIds.includes(address)) return;
-
-        if (!conversationsMap[address]) {
-          conversationsMap[address] = {
-            id: address,
-            name: address,
-            avatar: address[0] || '?',
-            avatarColor: this.getAvatarColor(address),
-            lastMessage: msg.body,
-            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            date: new Date(msg.date).toLocaleDateString(),
-            rawTime: msg.date,
-            unread: 0,
-          };
-        }
-        if (msg.read === 0 && msg.type === 1) {
-          conversationsMap[address].unread++;
-        }
-      });
-
-      const sorted = Object.values(conversationsMap);
-      sorted.sort((a, b) => b.rawTime - a.rawTime);
-      return await this.resolveContactNames(sorted);
+      const archivedSet = new Set(archivedIds);
+      const messages = await this.fetchSmsMessages();
+      const sorted = this.buildConversationMap(messages, address => archivedSet.has(address));
+      return this.resolveContactNames(sorted);
     } catch (error) {
       console.error('Error getting archived conversations:', error);
       return [];
     }
   }
 
-  // --- RECYCLE BIN FEATURES ---
-
   static RECYCLE_BIN_KEY = 'recycled_sms_ids';
 
-  // Get recycled message IDs
   static async getRecycledMessageIds() {
     try {
       const json = await AsyncStorage.getItem(this.RECYCLE_BIN_KEY);
       return json ? JSON.parse(json) : [];
     } catch (e) {
-      console.error("Error getting recycled IDs", e);
+      console.error('Error getting recycled IDs', e);
       return [];
     }
   }
 
-  // Recycle a conversation (hide from main list, show in recycle bin)
   static async recycleConversation(threadId) {
     try {
       const recycled = await this.getRecycledMessageIds();
@@ -370,12 +647,11 @@ class SmsController {
       }
       return true;
     } catch (e) {
-      console.error("Error recycling conversation", e);
+      console.error('Error recycling conversation', e);
       return false;
     }
   }
 
-  // Restore a conversation
   static async restoreConversation(threadId) {
     try {
       let recycled = await this.getRecycledMessageIds();
@@ -383,33 +659,15 @@ class SmsController {
       await AsyncStorage.setItem(this.RECYCLE_BIN_KEY, JSON.stringify(recycled));
       return true;
     } catch (e) {
-      console.error("Error restoring conversation", e);
+      console.error('Error restoring conversation', e);
       return false;
     }
   }
 
-  // Permanently delete a conversation
   static async permanentDeleteConversation(threadId) {
     try {
-      // 1. Remove from recycled list
       await this.restoreConversation(threadId);
-
-      // 2. Delete using Native Module (not implemented in mock usually, but let's assume usage of deleteSms)
-      // NOTE: 'threadId' here is actually the 'address' in our logic because we group by address. 
-      // Real deletion by thread_id would require mapping address -> thread_id or deleting all msgs from address.
-      // For now, we will just delete from our local "recycled" view effectively if we wanted to mimic it, 
-      // BUT the requirement implies "Recycle bin functionality".
-
-      // If we want to actually delete from phone:
-      // const messages = await this.fetchSmsMessages();
-      // const idsToDelete = messages.filter(m => m.address === threadId).map(m => m._id);
-      // await this.deleteSms(idsToDelete);
-
-      // For this task, "Recycle bin" usually implies a staging area. 
-      // "Permanent delete" implies it's gone for good. 
-
-      // Fetch messages for this contact to get their IDs
-      const messages = await this.fetchSmsMessages();
+      const messages = await this.fetchSmsMessages(true);
       const idsToDelete = messages
         .filter(msg => msg.address === threadId)
         .map(msg => msg._id);
@@ -418,21 +676,20 @@ class SmsController {
         await this.deleteSms(idsToDelete);
       }
       return true;
-
     } catch (e) {
-      console.error("Error permanently deleting conversation", e);
+      console.error('Error permanently deleting conversation', e);
       return false;
     }
   }
 
-  // Resolve phone numbers to contact names using native ContactsContract
   static async resolveContactNames(conversations) {
     try {
       const phoneNumbers = conversations.map(c => c.id);
-      if (phoneNumbers.length === 0) return conversations;
+      if (phoneNumbers.length === 0) {
+        return conversations;
+      }
 
       const contactNameMap = await SmsModule.getContactNames(phoneNumbers);
-
       return conversations.map(conv => {
         const savedName = contactNameMap[conv.id];
         if (savedName) {
@@ -446,140 +703,42 @@ class SmsController {
       });
     } catch (error) {
       console.warn('Contact name resolution failed, using numbers:', error);
-      return conversations; // Fallback to phone numbers
+      return conversations;
     }
   }
 
-  // Get conversations but EXCLUDE recycled ones
-  static async getConversations(page = 1, limit = 20) {
-    try {
-      const messages = await this.fetchSmsMessages();
-      const recycledIds = await this.getRecycledMessageIds();
-      const archivedIds = await this.getArchivedMessageIds();
-
-      // Group by address
-      const conversationsMap = {};
-
-      // Sort messages by date descending first to ensuring we capture the latest
-      messages.sort((a, b) => b.date - a.date);
-
-      messages.forEach(msg => {
-        const address = msg.address;
-
-        // SKIP if this conversation is recycled or archived
-        if (recycledIds.includes(address)) return;
-        if (archivedIds.includes(address)) return;
-
-        if (!conversationsMap[address]) {
-          conversationsMap[address] = {
-            id: address,
-            name: address, // In a real app, resolve contact name here
-            avatar: address[0] || '?',
-            avatarColor: this.getAvatarColor(address),
-            lastMessage: msg.body,
-            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            rawTime: msg.date,
-            unread: 0,
-          };
-        }
-
-        // Count unread (type 1 is received)
-        if (msg.read === 0 && msg.type === 1) {
-          conversationsMap[address].unread++;
-        }
-      });
-
-      // Convert to array
-      const sortedConversations = Object.values(conversationsMap);
-      // Ensure conversations are sorted by latest message
-      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
-
-      // Pagination
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedConversations = sortedConversations.slice(startIndex, endIndex);
-
-      return {
-        conversations: await this.resolveContactNames(paginatedConversations),
-        hasMore: endIndex < sortedConversations.length,
-        page: page
-      };
-
-    } catch (error) {
-      console.error('Error getting conversations:', error);
-      throw error;
-    }
-  }
-
-  // Get ONLY recycled conversations
   static async getRecycledConversations() {
     try {
-      const messages = await this.fetchSmsMessages();
       const recycledIds = await this.getRecycledMessageIds();
+      if (recycledIds.length === 0) {
+        return [];
+      }
 
-      if (recycledIds.length === 0) return [];
-
-      const conversationsMap = {};
-
-      // Sort for latest message
-      messages.sort((a, b) => b.date - a.date);
-
-      messages.forEach(msg => {
-        const address = msg.address;
-
-        // ONLY include if recycled
-        if (!recycledIds.includes(address)) return;
-
-        if (!conversationsMap[address]) {
-          conversationsMap[address] = {
-            id: address,
-            name: address,
-            avatar: address[0] || '?',
-            avatarColor: this.getAvatarColor(address),
-            lastMessage: msg.body,
-            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            rawTime: msg.date,
-            unread: 0, // Unread count might not matter in trash, but good to have
-          };
-        }
-        // Count unread (type 1 is received)
-        if (msg.read === 0 && msg.type === 1) {
-          conversationsMap[address].unread++;
-        }
-      });
-
-      const sortedConversations = Object.values(conversationsMap);
-      sortedConversations.sort((a, b) => b.rawTime - a.rawTime);
-      return sortedConversations;
-
+      const recycledSet = new Set(recycledIds);
+      const messages = await this.fetchSmsMessages();
+      return this.buildConversationMap(messages, address => recycledSet.has(address));
     } catch (error) {
       console.error('Error getting recycled conversations:', error);
       return [];
     }
   }
 
-
-  // Mark ALL conversations as read
   static async markAllAsRead() {
     try {
-      // Since the native module markAsRead usually takes an address/threadId, 
-      // we need to find all unread conversations and mark them.
-      // OR if the native module supports a global "mark all", use that.
-      // Assuming we need to iterate for now given the existing `markAsRead(address)`.
+      if (SmsModule.markAllAsRead) {
+        await SmsModule.markAllAsRead();
+        return true;
+      }
 
-      const conversations = await this.getConversations(1, 1000); // Get a large batch
+      const conversations = await this.getConversations(1, 100);
       const unreadConvos = conversations.conversations.filter(c => c.unread > 0);
-
-      const promises = unreadConvos.map(c => this.markAsRead(c.id));
-      await Promise.all(promises);
-
+      await Promise.all(unreadConvos.map(c => this.markAsRead(c.id)));
       return true;
     } catch (error) {
       console.error('Error marking all as read:', error);
       return false;
     }
   }
-
 }
 
 export default SmsController;

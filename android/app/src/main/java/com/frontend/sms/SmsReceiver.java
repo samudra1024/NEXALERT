@@ -106,6 +106,8 @@ public class SmsReceiver extends BroadcastReceiver {
                             } else {
                                 android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
                             }
+
+                            com.frontend.bridge.SmsModule.emitSmsReceived(sender, messageBody, timestamp);
                         }
                     }
                 }
@@ -194,7 +196,7 @@ public class SmsReceiver extends BroadcastReceiver {
             
             // Create intent to open the app when notification is tapped
             Intent intent = new Intent(context, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             intent.putExtra("sender", sender);
             
             PendingIntent pendingIntent = PendingIntent.getActivity(
