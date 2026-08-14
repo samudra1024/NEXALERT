@@ -36,14 +36,19 @@ const getAvatarColor = (address) => {
 };
 
 // Tab display label → ML category value (matches ml/model/config.py HAM_CATEGORIES)
+const CATEGORY_TABS = ['All', 'Personal', 'OTP', 'Banking', 'Spam'];
+
 const ML_TAB_FILTERS = {
-  All: null,
   Personal: 'personal',
-  Banking: 'banking',
   OTP: 'otp',
-  Subscription: 'subscription',
-  Promotions: 'promotional',
-  Unknown: 'unknown',
+  Banking: 'banking',
+};
+
+const EMPTY_STATE_MESSAGES = {
+  Personal: 'No personal messages',
+  OTP: 'No OTP messages',
+  Banking: 'No banking messages',
+  Spam: 'No spam messages',
 };
 
 export default function ChatsList() {
@@ -62,7 +67,7 @@ export default function ChatsList() {
   // UI States
   const [searchText, setSearchText] = useState('');
   // Collections State — tabs aligned to ML category labels
-  const [collections, setCollections] = useState(Object.keys(ML_TAB_FILTERS));
+  const [collections, setCollections] = useState(CATEGORY_TABS);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const categoryScrollRef = useRef(null);
   const [isAddCollectionVisible, setIsAddCollectionVisible] = useState(false);
@@ -193,10 +198,12 @@ export default function ChatsList() {
   const filteredContacts = useMemo(() => {
     let result = contacts;
 
-    // Category Filter — match conversation ML category to selected tab
-    if (selectedCategory !== 'All') {
-      const mlCategory = ML_TAB_FILTERS[selectedCategory] ?? selectedCategory.toLowerCase();
-      result = result.filter(c => c.category === mlCategory);
+    // Category Filter — match ML metadata on latest message per conversation
+    if (selectedCategory === 'Spam') {
+      result = result.filter(c => c.is_spam === true);
+    } else if (ML_TAB_FILTERS[selectedCategory]) {
+      const mlCategory = ML_TAB_FILTERS[selectedCategory];
+      result = result.filter(c => c.is_spam !== true && c.category === mlCategory);
     }
 
     // Search Filter
@@ -358,6 +365,15 @@ export default function ChatsList() {
         }}
         onEndReachedThreshold={0.5}
         ListFooterComponent={loadingMore ? <ActivityIndicator size="small" color="#0000ff" style={{ marginVertical: 20 }} /> : null}
+        ListEmptyComponent={
+          smsLoaded && selectedCategory !== 'All' && !searchText ? (
+            <View style={styles.emptyStateContainer}>
+              <Text style={[styles.emptyStateText, { color: theme.textSecondary }]}>
+                {EMPTY_STATE_MESSAGES[selectedCategory] || 'No messages'}
+              </Text>
+            </View>
+          ) : null
+        }
       />
 
       {/* Profile Overflow Menu */}
@@ -650,6 +666,15 @@ const styles = StyleSheet.create({
 
   flatList: {
     flex: 1,
+  },
+  emptyStateContainer: {
+    paddingVertical: 32,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    fontSize: 15,
+    fontWeight: '500',
   },
   chatItem: {
     flexDirection: 'row',

@@ -3,6 +3,8 @@ Data preprocessing module for SMS Spam Detection.
 Handles data loading, cleaning, and stratified splitting.
 """
 
+import re
+
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
@@ -20,6 +22,41 @@ from ml.model.config import (
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+# Conservative monetary normalization: only currency-prefixed amounts.
+# Supports Rs/Rs./rs, INR/inr, and ₹ followed by comma/decimal numbers.
+# Idempotent — does not match existing placeholders such as <amount>.
+MONETARY_AMOUNT_PATTERN = re.compile(
+    r'(?:rs\.?|inr|₹)\s*[\d,]+(?:\.\d+)?',
+    re.IGNORECASE,
+)
+
+
+def normalize_monetary_amounts(text: str) -> str:
+    """
+    Replace currency-prefixed monetary values with <amount>.
+
+    Only matches explicit currency markers (rs, inr, ₹) so OTP codes,
+    phone numbers, dates, and bare digits are preserved.
+    """
+    return MONETARY_AMOUNT_PATTERN.sub('<amount>', text)
+
+
+def preprocess_text(text: str) -> str:
+    """
+    Apply shared preprocessing to text.
+
+    Steps: lowercase, strip, then conservative monetary normalization.
+    """
+    if not isinstance(text, str):
+        text = str(text)
+
+    if PREPROCESSING_CONFIG['lowercase']:
+        text = text.lower()
+
+    text = text.strip()
+    text = normalize_monetary_amounts(text)
+    return text
 
 
 def load_data(dataset_path: str = None) -> pd.DataFrame:
@@ -84,26 +121,6 @@ def load_data(dataset_path: str = None) -> pd.DataFrame:
     logger.info(f"Label distribution:\n{df['label'].value_counts()}")
     
     return df
-
-
-def preprocess_text(text: str) -> str:
-    """
-    Apply minimal preprocessing to text.
-    
-    Args:
-        text: Raw SMS text
-        
-    Returns:
-        Preprocessed text
-    """
-    if not isinstance(text, str):
-        text = str(text)
-    
-    # Only lowercase (preserve numbers, URLs, symbols as they're spam signals)
-    if PREPROCESSING_CONFIG['lowercase']:
-        text = text.lower()
-    
-    return text.strip()
 
 
 def encode_labels(df: pd.DataFrame) -> pd.DataFrame:

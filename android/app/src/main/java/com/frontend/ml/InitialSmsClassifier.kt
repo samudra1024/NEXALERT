@@ -11,8 +11,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * One-time (idempotent) inbox backfill: classifies existing SMS in content://sms
- * that do not yet have a matching ml_metadata row (address + timestamp).
+ * Inbox backfill: classifies existing SMS in content://sms that lack metadata or have
+ * stale rows (e.g. category unknown on HAM, obsolete subscription/promotional labels).
  */
 object InitialSmsClassifier {
 
@@ -20,13 +20,13 @@ object InitialSmsClassifier {
     private const val PREF_TAG = "BACKFILL_PREF"
     private const val PREF_NAME = "ml_preferences"
     private const val KEY_MODEL_VERSION = "ml_model_version"
-    private const val CURRENT_MODEL_VERSION = 1
+    private const val CURRENT_MODEL_VERSION = 2
     private val isRunning = AtomicBoolean(false)
 
     /**
      * Schedules backfill on a background thread after ML models are loaded.
      * Skips immediately if a previous run completed successfully (SharedPreferences).
-     * Safe to call multiple times; skips messages that already have metadata.
+     * Safe to call multiple times; skips messages with complete current metadata.
      */
     fun scheduleAfterModelsLoaded(context: Context) {
         val appContext = context.applicationContext
@@ -84,7 +84,7 @@ object InitialSmsClassifier {
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
     private fun runBackfill(context: Context) {
-        Log.d(PREF_TAG, "Starting first-time backfill")
+        Log.d(PREF_TAG, "Starting backfill for model version $CURRENT_MODEL_VERSION")
 
         val startMs = System.currentTimeMillis()
         Log.d(TAG, "Started")
@@ -133,14 +133,14 @@ object InitialSmsClassifier {
                     val body = it.getString(it.getColumnIndexOrThrow(Telephony.Sms.BODY)) ?: ""
                     val timestamp = it.getLong(it.getColumnIndexOrThrow(Telephony.Sms.DATE))
 
-                    if (dbHelper.hasMetadata(address, timestamp)) {
+                    if (dbHelper.isClassificationComplete(address, timestamp)) {
                         alreadyClassified++
                         continue
                     }
 
                     try {
                         val result = mlManager.processMessage(body)
-                        dbHelper.insertMetadata(
+                        dbHelper.upsertMetadata(
                             address,
                             timestamp,
                             result.isSpam,

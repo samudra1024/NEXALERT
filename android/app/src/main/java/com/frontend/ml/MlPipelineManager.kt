@@ -248,9 +248,15 @@ class MlPipelineManager private constructor(private val context: Context) {
         }
 
         try {
+            val normalizedMessage = preprocessSmsText(message)
+            if (runtimeDebug) {
+                logRuntime("Preprocess", "raw=\"$message\"")
+                logRuntime("Preprocess", "normalized=\"$normalizedMessage\"")
+            }
+
             // Stage 1: Spam Detection — outputs output_label (int64) + output_probability (seq(map))
             val inputName = s1.inputNames.iterator().next()
-            val inputTensor = OnnxTensor.createTensor(ortEnv, arrayOf(message))
+            val inputTensor = OnnxTensor.createTensor(ortEnv, arrayOf(normalizedMessage))
             val results = s1.run(mapOf(inputName to inputTensor))
 
             val spamLabel = parseSpamLabel(results)
@@ -273,7 +279,7 @@ class MlPipelineManager private constructor(private val context: Context) {
                 val s2 = stage2Session
                 if (s2 != null) {
                     val stage2InputName = s2.inputNames.iterator().next()
-                    val stage2InputTensor = OnnxTensor.createTensor(ortEnv, arrayOf(message))
+                    val stage2InputTensor = OnnxTensor.createTensor(ortEnv, arrayOf(normalizedMessage))
 
                     if (runtimeDebug) {
                         logRuntime("Stage2", "IMMEDIATELY BEFORE s2.run() inputName=$stage2InputName")
@@ -529,9 +535,27 @@ class MlPipelineManager private constructor(private val context: Context) {
         val message: String,
         val queuedAt: Long = System.currentTimeMillis()
     )
+
+    /**
+     * Shared SMS preprocessing for Stage 1 and Stage 2 inference.
+     * Mirrors ml/model/preprocess.py: lowercase, trim, then replace
+     * currency-prefixed amounts (rs/inr/₹) with <amount>.
+     * Idempotent and does not normalize OTP or bare digit codes.
+     */
+    private fun preprocessSmsText(message: String): String {
+        var text = message.lowercase().trim()
+        text = MONETARY_AMOUNT_PATTERN.replace(text, "<amount>")
+        return text
+    }
     
     companion object {
         private const val MODEL_DEBUG_TAG = "NEXALERT_MODEL_DEBUG"
+        /**
+         * Currency-prefixed monetary values only.
+         * Matches Python MONETARY_AMOUNT_PATTERN in ml/model/preprocess.py.
+         */
+        private val MONETARY_AMOUNT_PATTERN =
+            Regex("""(?:rs\.?|inr|₹)\s*[\d,]+(?:\.\d+)?""", RegexOption.IGNORE_CASE)
         /** Training label order (ml/model/config.py HAM_CATEGORIES) — for diagnostic index display only. */
         private val STAGE2_INDEX_TO_LABEL = arrayOf(
             "personal", "otp", "banking"
@@ -557,7 +581,7 @@ class MlPipelineManager private constructor(private val context: Context) {
         android.util.Log.d(MODEL_DEBUG_TAG, "MODEL: stage1.onnx (assets/models/v1/stage1.onnx)")
         android.util.Log.d(MODEL_DEBUG_TAG, "MODEL: stage2.onnx (assets/models/v1/stage2.onnx)")
         android.util.Log.d(MODEL_DEBUG_TAG, "RUNTIME: ONNX Runtime — OrtSession / OnnxTensor")
-        android.util.Log.d(MODEL_DEBUG_TAG, "PREPROCESSING: none — raw SMS string via OnnxTensor.createTensor(ortEnv, arrayOf(message))")
+        android.util.Log.d(MODEL_DEBUG_TAG, "PREPROCESSING: lowercase + strip + currency amount -> <amount> via preprocessSmsText()")
         android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 INPUT: tensor(string), shape=[batch]")
         android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 OUTPUT: output_label tensor(int64); output_probability seq(map(int64,float))")
         android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 OUTPUT SHAPE: output_label=[batch]; output_probability=seq(map) with keys 0,1")

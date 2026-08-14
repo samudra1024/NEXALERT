@@ -11,8 +11,10 @@ It only processes messages that are already known to be HAM.
 """
 
 import logging
+import types
 import numpy as np
 import pandas as pd
+import scipy.sparse as sp
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
@@ -120,6 +122,60 @@ def load_ham_dataset(dataset_path: str = None) -> pd.DataFrame:
     return ham_df
 
 
+def _attach_lgbm_feature_names(X, feature_names):
+    """
+    Attach column names to sparse TF-IDF output for LGBMClassifier.predict*.
+
+    LightGBM stores auto-generated feature_name_ during fit, but sklearn
+    Pipeline passes a plain sparse matrix at predict time, which triggers:
+    "X does not have valid feature names, but LGBMClassifier was fitted with feature names"
+    """
+    if hasattr(X, "columns"):
+        return X
+    if feature_names is None:
+        return X
+
+    columns = list(feature_names[: X.shape[1]])
+    if sp.issparse(X):
+        return pd.DataFrame.sparse.from_spmatrix(X, columns=columns)
+    return pd.DataFrame(X, columns=columns)
+
+
+def _patch_lgbm_classifier_for_sparse_input(classifier: lgb.LGBMClassifier) -> lgb.LGBMClassifier:
+    """Wrap predict/predict_proba so sparse Pipeline inputs carry feature names."""
+    if getattr(classifier, "_lgbm_sparse_input_patched", False):
+        return classifier
+
+    orig_predict = classifier.predict
+    orig_predict_proba = classifier.predict_proba
+
+    def predict(self, X, *args, **kwargs):
+        X = _attach_lgbm_feature_names(X, getattr(self, "feature_name_", None))
+        return orig_predict(X, *args, **kwargs)
+
+    def predict_proba(self, X, *args, **kwargs):
+        X = _attach_lgbm_feature_names(X, getattr(self, "feature_name_", None))
+        return orig_predict_proba(X, *args, **kwargs)
+
+    classifier.predict = types.MethodType(predict, classifier)
+    classifier.predict_proba = types.MethodType(predict_proba, classifier)
+    classifier._lgbm_sparse_input_patched = True
+    return classifier
+
+
+def load_stage2_pipeline(model_path: str = None) -> Pipeline:
+    """Load Stage 2 pipeline and patch LightGBM for sparse TF-IDF inference."""
+    model_path = Path(model_path) if model_path else ARTIFACTS_DIR / "stage2_model.pkl"
+    if not model_path.exists():
+        raise FileNotFoundError(f"Stage 2 model not found: {model_path}")
+
+    with open(model_path, "rb") as handle:
+        pipeline = pickle.load(handle)
+
+    _patch_lgbm_classifier_for_sparse_input(pipeline.named_steps["classifier"])
+    return pipeline
+
+
 def create_stage2_pipeline() -> Pipeline:
     """
     Create sklearn Pipeline for Stage 2 (TF-IDF + LightGBM).
@@ -134,6 +190,7 @@ def create_stage2_pipeline() -> Pipeline:
     
     # LightGBM Classifier
     classifier = lgb.LGBMClassifier(**STAGE2_LGBM_CONFIG)
+    _patch_lgbm_classifier_for_sparse_input(classifier)
     
     # Create pipeline
     pipeline = Pipeline([

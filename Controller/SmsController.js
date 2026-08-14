@@ -47,7 +47,8 @@ class SmsController {
         ...msg,
         date: parseInt(msg.date),
         type: parseInt(msg.type),
-        read: parseInt(msg.read)
+        read: parseInt(msg.read),
+        is_spam: msg.is_spam === true,
       }));
     } catch (error) {
       console.error('Error fetching SMS:', error);
@@ -87,6 +88,7 @@ class SmsController {
             rawTime: msg.date,
             unread: 0,
             category: msg.category ?? 'unknown',
+            is_spam: msg.is_spam === true,
           };
         }
 

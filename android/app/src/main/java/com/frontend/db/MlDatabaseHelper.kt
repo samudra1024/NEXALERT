@@ -40,6 +40,8 @@ class MlDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
         onCreate(db)
     }
 
+    private val validHamCategories = setOf("personal", "otp", "banking")
+
     /** True if ml_metadata already has a row for this exact SMS (address + timestamp). */
     fun hasMetadata(address: String, timestamp: Long): Boolean {
         val db = readableDatabase
@@ -69,6 +71,66 @@ class MlDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
             put(MlMetadataContract.FeedEntry.COLUMN_NAME_CONFIDENCE, confidence)
         }
         db.insert(MlMetadataContract.FeedEntry.TABLE_NAME, null, values)
+    }
+
+    /**
+     * True when an existing row is a finished classification under the current category scheme.
+     * Spam rows may keep category "unknown"; HAM rows must be personal/otp/banking.
+     */
+    fun isClassificationComplete(address: String, timestamp: Long): Boolean {
+        val db = readableDatabase
+        db.query(
+            MlMetadataContract.FeedEntry.TABLE_NAME,
+            arrayOf(
+                MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM,
+                MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY
+            ),
+            "${MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS} = ? AND ${MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP} = ?",
+            arrayOf(address, timestamp.toString()),
+            null,
+            null,
+            null
+        ).use { cursor ->
+            if (!cursor.moveToFirst()) {
+                return false
+            }
+            val isSpam = cursor.getInt(
+                cursor.getColumnIndexOrThrow(MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM)
+            ) == 1
+            if (isSpam) {
+                return true
+            }
+            val category = cursor.getString(
+                cursor.getColumnIndexOrThrow(MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY)
+            ) ?: "unknown"
+            return category in validHamCategories
+        }
+    }
+
+    /** Insert or replace metadata for backfill reclassification. */
+    fun upsertMetadata(
+        address: String,
+        timestamp: Long,
+        isSpam: Boolean,
+        category: String,
+        confidence: Float
+    ) {
+        val db = writableDatabase
+        val values = ContentValues().apply {
+            put(MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS, address)
+            put(MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP, timestamp)
+            put(MlMetadataContract.FeedEntry.COLUMN_NAME_IS_SPAM, if (isSpam) 1 else 0)
+            put(MlMetadataContract.FeedEntry.COLUMN_NAME_CATEGORY, category)
+            put(MlMetadataContract.FeedEntry.COLUMN_NAME_CONFIDENCE, confidence)
+        }
+        val where =
+            "${MlMetadataContract.FeedEntry.COLUMN_NAME_ADDRESS} = ? AND ${MlMetadataContract.FeedEntry.COLUMN_NAME_TIMESTAMP} = ?"
+        val args = arrayOf(address, timestamp.toString())
+        if (hasMetadata(address, timestamp)) {
+            db.update(MlMetadataContract.FeedEntry.TABLE_NAME, values, where, args)
+        } else {
+            db.insert(MlMetadataContract.FeedEntry.TABLE_NAME, null, values)
+        }
     }
 
     companion object {
