@@ -28,6 +28,7 @@ Full Pipeline ONNX (String Input):
 import logging
 import pickle
 import warnings
+import json
 from pathlib import Path
 
 import numpy as np
@@ -99,25 +100,48 @@ def export_to_onnx():
     # =========================================================================
     logger.info("\nLoading trained model artifacts...")
 
+    bundle_path = ARTIFACTS_DIR / "model_bundle.pkl"
     vectorizer_path = ARTIFACTS_DIR / "vectorizer.pkl"
     model_path = ARTIFACTS_DIR / "model.pkl"
+    threshold_path = ARTIFACTS_DIR / "threshold.json"
 
-    if not vectorizer_path.exists():
-        raise FileNotFoundError(f"Vectorizer not found: {vectorizer_path}\nRun train.py first.")
-    if not model_path.exists():
-        raise FileNotFoundError(f"Model not found: {model_path}\nRun train.py first.")
+    if bundle_path.exists():
+        with open(bundle_path, 'rb') as f:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                bundle = pickle.load(f)
+        vectorizer = bundle['vectorizer']
+        model = bundle['model']
+        threshold = bundle['threshold']
+        logger.info(f"Loaded model bundle: threshold={threshold:.4f}")
+    elif vectorizer_path.exists() and model_path.exists():
+        with open(vectorizer_path, 'rb') as f:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                vectorizer = pickle.load(f)
+        logger.info(f"Loaded vectorizer: vocab_size={len(vectorizer.vocabulary_)}")
 
-    with open(vectorizer_path, 'rb') as f:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            vectorizer = pickle.load(f)
-    logger.info(f"Loaded vectorizer: vocab_size={len(vectorizer.vocabulary_)}")
+        with open(model_path, 'rb') as f:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                model = pickle.load(f)
+        logger.info(f"Loaded model: {type(model).__name__}, classes={list(model.classes_)}")
 
-    with open(model_path, 'rb') as f:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            model = pickle.load(f)
-    logger.info(f"Loaded model: {type(model).__name__}, classes={list(model.classes_)}")
+        if threshold_path.exists():
+            with open(threshold_path, 'r') as f:
+                threshold = json.load(f)['threshold']
+        else:
+            threshold = 0.5
+            logger.warning("threshold.json not found; defaulting to 0.5 for export logging")
+    else:
+        raise FileNotFoundError(
+            f"Stage 1 artifacts not found in {ARTIFACTS_DIR}. "
+            "Run: python -m ml.model.stage1.train"
+        )
+
+    with open(threshold_path, 'w') as f:
+        json.dump({'threshold': threshold}, f)
+    logger.info(f"Ensured threshold.json is present: {threshold:.4f}")
 
     # =========================================================================
     # STEP 2: Fix sklearn Version Compatibility (Root Cause Fix)
@@ -224,8 +248,10 @@ def export_to_onnx():
     logger.info(f"  Input type:       tensor(string)")
     logger.info(f"  Input shape:      [N]  (1D — matches Android arrayOf(message))")
     logger.info(f"  TF-IDF in graph:  YES (TfIdfVectorizer op)")
-    logger.info(f"  Output:           output_label (int64: 0=ham, 1=spam)")
+    logger.info(f"  Output:           output_label (int64: 0=ham, 1=spam at ONNX default 0.5)")
     logger.info(f"                    output_probability (map<int64, float>)")
+    logger.info(f"  Decision threshold: {threshold:.4f} (saved to threshold.json)")
+    logger.info(f"  Android must apply: P(spam) >= {threshold:.4f}")
 
     return onnx_path
 
@@ -240,6 +266,7 @@ if __name__ == "__main__":
         print(f"File size:   {onnx_path.stat().st_size / 1024:.2f} KB")
         print("\nNEXT STEP: Copy to Android assets:")
         print(f"  copy {onnx_path} android\\app\\src\\main\\assets\\models\\v1\\stage1.onnx")
+        print(f"  copy {ARTIFACTS_DIR / 'threshold.json'} android\\app\\src\\main\\assets\\models\\v1\\threshold.json")
     except FileNotFoundError as e:
         print(f"\nError: {e}")
         print("\nTrain the model first:")

@@ -41,6 +41,11 @@ def save_model(model, vectorizer, threshold: float, filepath: str = None, use_bu
     filepath = filepath or ARTIFACTS_DIR
     
     logger.info(f"Saving model artifacts to {filepath}")
+
+    threshold_path = filepath / "threshold.json"
+    with open(threshold_path, 'w') as f:
+        json.dump({'threshold': threshold}, f)
+    logger.info(f"✓ Saved threshold to {threshold_path} ({threshold:.4f})")
     
     if use_bundle:
         # Save as single bundle containing all components
@@ -55,6 +60,17 @@ def save_model(model, vectorizer, threshold: float, filepath: str = None, use_bu
             pickle.dump(bundle, f)
         logger.info(f"✓ Saved model bundle to {bundle_path}")
         logger.info(f"   Contents: model, vectorizer, threshold ({threshold:.4f})")
+
+        # Keep separate artifacts for ONNX export compatibility
+        vectorizer_path = filepath / "vectorizer.pkl"
+        with open(vectorizer_path, 'wb') as f:
+            pickle.dump(vectorizer, f)
+        logger.info(f"✓ Saved vectorizer to {vectorizer_path}")
+
+        model_path = filepath / "model.pkl"
+        with open(model_path, 'wb') as f:
+            pickle.dump(model, f)
+        logger.info(f"✓ Saved model to {model_path}")
     else:
         # Legacy: Save separate files
         # Save vectorizer

@@ -9,6 +9,7 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import java.io.File
 import java.io.FileOutputStream
+import org.json.JSONObject
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
@@ -29,6 +30,7 @@ class MlPipelineManager private constructor(private val context: Context) {
     private val ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var stage1Session: OrtSession? = null
     private var stage2Session: OrtSession? = null
+    private var spamThreshold: Float = 0.5f
 
     /** TEMP: Android-only runtime trace for HAM SMS verification. Remove after debugging. */
     private fun shouldLogAndroidRuntime(message: String): Boolean {
@@ -80,8 +82,9 @@ class MlPipelineManager private constructor(private val context: Context) {
                 val stage1StartTime = System.currentTimeMillis()
                 android.util.Log.d("MlPipelineManager", "[1/3] Loading Stage 1 (Spam Detection)...")
                 stage1Session = loadSession("models/v1/stage1.onnx", "stage1.onnx")
+                spamThreshold = loadSpamThreshold()
                 stage1LoadTimeMs = System.currentTimeMillis() - stage1StartTime
-                android.util.Log.d("MlPipelineManager", "[1/3] Stage 1 loaded in ${stage1LoadTimeMs}ms")
+                android.util.Log.d("MlPipelineManager", "[1/3] Stage 1 loaded in ${stage1LoadTimeMs}ms (threshold=$spamThreshold)")
                 
                 // Load Stage 2 with timing
                 val stage2StartTime = System.currentTimeMillis()
@@ -94,6 +97,8 @@ class MlPipelineManager private constructor(private val context: Context) {
                 android.util.Log.d("MODEL_LOAD", "modelLoaded=true")
                 android.util.Log.d("MODEL_READY", "Models loaded successfully")
                 modelLoadTimeMs = System.currentTimeMillis() - totalStartTime
+                
+                logModelDebugInfoOnce()
                 
                 android.util.Log.d("MlPipelineManager", "========== ML MODEL LOADING COMPLETE ==========")
                 android.util.Log.d("MlPipelineManager", "  Stage 1 (Spam Detection): ${stage1LoadTimeMs}ms")
@@ -148,6 +153,20 @@ class MlPipelineManager private constructor(private val context: Context) {
         android.util.Log.d("MlPipelineManager", "  → File size: ${file.length() / 1024}KB")
         
         return session
+    }
+
+    /** Load tuned spam threshold saved during Python training (models/v1/threshold.json). */
+    private fun loadSpamThreshold(): Float {
+        return try {
+            context.assets.open("models/v1/threshold.json").use { inputStream ->
+                val threshold = JSONObject(inputStream.bufferedReader().readText()).getDouble("threshold").toFloat()
+                android.util.Log.d("MlPipelineManager", "Loaded Stage 1 threshold: $threshold")
+                threshold
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("MlPipelineManager", "Failed to load threshold.json; using default 0.5", e)
+            0.5f
+        }
     }
 
     // Lazy initialization guard for app killed scenarios
@@ -236,17 +255,18 @@ class MlPipelineManager private constructor(private val context: Context) {
 
             val spamLabel = parseSpamLabel(results)
             val spamProb = parseClassProbability(results, spamClassKey = 1L)
-            isSpam = spamLabel == 1L
-            confidence = if (spamProb > 0f) spamProb else if (isSpam) 1f else 0f
+            isSpam = spamProb >= spamThreshold
+            confidence = if (isSpam) spamProb else (1f - spamProb)
 
             if (runtimeDebug) {
-                logRuntime("Stage1", "spamLabel=$spamLabel")
+                logRuntime("Stage1", "spamLabel=$spamLabel onnxDefault=${spamLabel == 1L}")
+                logRuntime("Stage1", "spamProb=$spamProb threshold=$spamThreshold")
                 logRuntime("Stage1", "confidence=$confidence")
                 logRuntime("Stage1", "isSpam=$isSpam")
             }
 
-            results.close()
-            inputTensor.close()
+            var stage2Results: OrtSession.Result? = null
+            var stage2Probs: Map<String, Float>? = null
 
             // Stage 2: Categorization — outputs output_label (string) + output_probability (seq(map))
             if (!isSpam) {
@@ -259,7 +279,7 @@ class MlPipelineManager private constructor(private val context: Context) {
                         logRuntime("Stage2", "IMMEDIATELY BEFORE s2.run() inputName=$stage2InputName")
                     }
 
-                    val stage2Results = s2.run(mapOf(stage2InputName to stage2InputTensor))
+                    stage2Results = s2.run(mapOf(stage2InputName to stage2InputTensor))
 
                     if (runtimeDebug) {
                         val outputKeys = stage2Results.map { it.key }
@@ -275,6 +295,7 @@ class MlPipelineManager private constructor(private val context: Context) {
                     }
 
                     category = parseCategoryLabel(stage2Results, runtimeDebug)
+                    stage2Probs = extractProbabilityMap(stage2Results)
 
                     stage2Results.close()
                     stage2InputTensor.close()
@@ -284,6 +305,21 @@ class MlPipelineManager private constructor(private val context: Context) {
             } else if (runtimeDebug) {
                 logRuntime("FAIL", "Stage 2 skipped because Stage 1 isSpam=true")
             }
+
+            // TEMP diagnostic — log raw model output before closing Stage1 results
+            logClassificationDebug(
+                message = message,
+                stage1Results = results,
+                stage2Probs = stage2Probs,
+                predictedLabel = if (isSpam) null else category,
+                spamLabel = spamLabel,
+                spamProb = spamProb,
+                isSpam = isSpam,
+                finalCategory = category
+            )
+
+            results.close()
+            inputTensor.close()
 
         } catch (e: Exception) {
             android.util.Log.e("MlPipelineManager", "Inference error", e)
@@ -495,6 +531,13 @@ class MlPipelineManager private constructor(private val context: Context) {
     )
     
     companion object {
+        private const val MODEL_DEBUG_TAG = "NEXALERT_MODEL_DEBUG"
+        /** Training label order (ml/model/config.py HAM_CATEGORIES) — for diagnostic index display only. */
+        private val STAGE2_INDEX_TO_LABEL = arrayOf(
+            "personal", "otp", "banking"
+        )
+        private val modelDebugInfoLogged = AtomicBoolean(false)
+
         @Volatile
         private var instance: MlPipelineManager? = null
 
@@ -505,5 +548,108 @@ class MlPipelineManager private constructor(private val context: Context) {
                 }
             }
         }
+    }
+
+    /** TEMP diagnostic: log model files, output types, and label mapping once after load. */
+    private fun logModelDebugInfoOnce() {
+        if (!modelDebugInfoLogged.compareAndSet(false, true)) return
+
+        android.util.Log.d(MODEL_DEBUG_TAG, "MODEL: stage1.onnx (assets/models/v1/stage1.onnx)")
+        android.util.Log.d(MODEL_DEBUG_TAG, "MODEL: stage2.onnx (assets/models/v1/stage2.onnx)")
+        android.util.Log.d(MODEL_DEBUG_TAG, "RUNTIME: ONNX Runtime — OrtSession / OnnxTensor")
+        android.util.Log.d(MODEL_DEBUG_TAG, "PREPROCESSING: none — raw SMS string via OnnxTensor.createTensor(ortEnv, arrayOf(message))")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 INPUT: tensor(string), shape=[batch]")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 OUTPUT: output_label tensor(int64); output_probability seq(map(int64,float))")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 OUTPUT SHAPE: output_label=[batch]; output_probability=seq(map) with keys 0,1")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 LABEL MAPPING: 0 -> ham, 1 -> spam")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 INPUT: tensor(string), shape=[batch]")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 OUTPUT: output_label tensor(string); output_probability seq(map(string,float))")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 THRESHOLD: $spamThreshold (spam if P(spam) >= threshold)")
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 OUTPUT SHAPE: output_label=[1]; output_probability=seq(map) with 3 string keys")
+        STAGE2_INDEX_TO_LABEL.forEachIndexed { index, label ->
+            android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 LABEL MAPPING: $index -> $label")
+        }
+        stage1Session?.let { session ->
+            android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 session inputNames=${session.inputNames} outputNames=${session.outputNames}")
+        }
+        stage2Session?.let { session ->
+            android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 session inputNames=${session.inputNames} outputNames=${session.outputNames}")
+        }
+        android.util.Log.d(
+            MODEL_DEBUG_TAG,
+            "NOTE: Stage2 category comes from output_label string directly (parseCategoryLabel); no index array in Android code."
+        )
+    }
+
+    /** TEMP diagnostic: read output_probability map without changing inference behaviour. */
+    private fun extractProbabilityMap(results: OrtSession.Result): Map<String, Float> {
+        val out = linkedMapOf<String, Float>()
+        val probValue = results.get("output_probability").orElse(null) ?: return out
+        if (probValue !is OnnxSequence) return out
+        val seqList = probValue.value as? List<*> ?: return out
+        if (seqList.isEmpty()) return out
+        val mapValue = seqList[0] as? OnnxMap ?: return out
+        val probMap = mapValue.value ?: return out
+        for ((key, value) in probMap) {
+            val floatVal = when (value) {
+                is Float -> value
+                is Double -> value.toFloat()
+                is Number -> value.toFloat()
+                else -> continue
+            }
+            out[key.toString()] = floatVal
+        }
+        return out
+    }
+
+    /** TEMP diagnostic: log SMS, raw class scores, predicted index, confidence, final category. */
+    private fun logClassificationDebug(
+        message: String,
+        stage1Results: OrtSession.Result,
+        stage2Probs: Map<String, Float>?,
+        predictedLabel: String?,
+        spamLabel: Long,
+        spamProb: Float,
+        isSpam: Boolean,
+        finalCategory: String
+    ) {
+        val smsDisplay = if (message.length > 500) message.take(500) + "..." else message
+        android.util.Log.d(MODEL_DEBUG_TAG, "SMS: $smsDisplay")
+
+        val stage1Probs = extractProbabilityMap(stage1Results)
+        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 RAW OUTPUT:")
+        android.util.Log.d(MODEL_DEBUG_TAG, "0=${stage1Probs["0"] ?: 0f}")
+        android.util.Log.d(MODEL_DEBUG_TAG, "1=${stage1Probs["1"] ?: 0f}")
+        android.util.Log.d(MODEL_DEBUG_TAG, "PREDICTED_INDEX=${if (isSpam) 1 else 0}")
+        android.util.Log.d(MODEL_DEBUG_TAG, "CONFIDENCE=${if (isSpam) spamProb else (1f - spamProb)}")
+        android.util.Log.d(MODEL_DEBUG_TAG, "THRESHOLD=$spamThreshold")
+        android.util.Log.d(MODEL_DEBUG_TAG, "ONNX_DEFAULT_LABEL=$spamLabel")
+        android.util.Log.d(MODEL_DEBUG_TAG, "CATEGORY=${if (isSpam) "spam" else "ham"}")
+
+        if (isSpam) {
+            android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2: skipped (Stage1 predicted spam)")
+            android.util.Log.d(MODEL_DEBUG_TAG, "FINAL_CATEGORY=$finalCategory")
+            return
+        }
+
+        if (stage2Probs == null || predictedLabel == null) {
+            android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2: no results (session null or not run)")
+            android.util.Log.d(MODEL_DEBUG_TAG, "FINAL_CATEGORY=$finalCategory")
+            return
+        }
+
+        val predictedIndex = STAGE2_INDEX_TO_LABEL.indexOf(predictedLabel)
+        val confidence = stage2Probs[predictedLabel]
+            ?: stage2Probs.values.maxOrNull()
+            ?: 0f
+
+        android.util.Log.d(MODEL_DEBUG_TAG, "RAW OUTPUT:")
+        STAGE2_INDEX_TO_LABEL.forEachIndexed { index, label ->
+            android.util.Log.d(MODEL_DEBUG_TAG, "$index=${stage2Probs[label] ?: 0f}")
+        }
+        android.util.Log.d(MODEL_DEBUG_TAG, "PREDICTED_INDEX=$predictedIndex")
+        android.util.Log.d(MODEL_DEBUG_TAG, "CONFIDENCE=$confidence")
+        android.util.Log.d(MODEL_DEBUG_TAG, "PREDICTED_CATEGORY=$predictedLabel")
+        android.util.Log.d(MODEL_DEBUG_TAG, "FINAL_CATEGORY=$finalCategory")
     }
 }

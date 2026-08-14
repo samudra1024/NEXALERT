@@ -2,12 +2,9 @@
 Stage 2 Training: HAM Message Categorization using TF-IDF + LightGBM.
 
 This module trains a multi-class classifier to categorize HAM messages into:
-- Personal
-- Banking
-- OTP
-- Subscription
-- Promotional
-- Unknown
+- personal
+- otp
+- banking
 
 IMPORTANT: This model works independently from Stage 1 (Spam Detection).
 It only processes messages that are already known to be HAM.
@@ -30,9 +27,9 @@ from ml.model.config import (
     RANDOM_SEED,
     STAGE2_TFIDF_CONFIG,
     STAGE2_LGBM_CONFIG,
-    STAGE2_CLASS_WEIGHTS,
     HAM_CATEGORIES,
 )
+from ml.model.preprocess import preprocess_text
 
 # Setup logging
 logging.basicConfig(
@@ -74,9 +71,28 @@ def load_ham_dataset(dataset_path: str = None) -> pd.DataFrame:
     logger.info(f"Loaded {len(df)} total messages")
     
     # Filter for HAM messages only (Stage 2 only processes HAM)
-    ham_df = df[df['label'] == 'ham'].copy()
+    ham_df = df[df['label'].astype(str).str.lower().str.strip() == 'ham'].copy()
     
     logger.info(f"Filtered to {len(ham_df)} HAM messages")
+
+    # Normalize category names to the intended Stage 2 labels
+    category_lookup = {cat.lower(): cat for cat in HAM_CATEGORIES}
+    ham_df['category'] = (
+        ham_df['category']
+        .astype(str)
+        .str.strip()
+        .str.lower()
+        .map(category_lookup)
+    )
+    invalid_rows = ham_df['category'].isna().sum()
+    if invalid_rows > 0:
+        logger.warning(
+            f"Dropping {invalid_rows} HAM rows with categories outside {HAM_CATEGORIES}"
+        )
+        ham_df = ham_df.dropna(subset=['category'])
+
+    ham_df['text'] = ham_df['text'].apply(preprocess_text)
+    
     logger.info(f"HAM category distribution:\n{ham_df['category'].value_counts()}")
     
     # Validate required columns
@@ -94,6 +110,12 @@ def load_ham_dataset(dataset_path: str = None) -> pd.DataFrame:
     
     if dropped_rows > 0:
         logger.warning(f"Dropped {dropped_rows} rows with missing values")
+
+    before_dedup = len(ham_df)
+    ham_df = ham_df.drop_duplicates(subset=['text'], keep='first')
+    deduped_rows = before_dedup - len(ham_df)
+    if deduped_rows > 0:
+        logger.warning(f"Removed {deduped_rows} exact duplicate HAM SMS texts before splitting")
     
     return ham_df
 

@@ -3,29 +3,37 @@ End-to-end verification script for Android ML pipeline integration.
 Simulates: SMS -> Stage1 -> Stage2 -> DB category -> Frontend tab mapping
 """
 import json
+from pathlib import Path
 import onnxruntime as ort
 import numpy as np
 
 STAGE1 = "ml/model/artifacts/model.onnx"
 STAGE2 = "ml/model/artifacts/stage2_model.onnx"
+THRESHOLD_PATH = Path("ml/model/artifacts/threshold.json")
+ANDROID_THRESHOLD_PATH = Path("android/app/src/main/assets/models/v1/threshold.json")
+
+def load_spam_threshold() -> float:
+    for path in (THRESHOLD_PATH, ANDROID_THRESHOLD_PATH):
+        if path.exists():
+            with open(path, "r", encoding="utf-8") as f:
+                return float(json.load(f)["threshold"])
+    return 0.5
+
+SPAM_THRESHOLD = load_spam_threshold()
 
 ML_TAB_FILTERS = {
     "All": None,
     "Personal": "personal",
     "Banking": "banking",
     "OTP": "otp",
-    "Subscription": "subscription",
-    "Promotions": "promotional",
-    "Unknown": "unknown",
 }
 
 SAMPLES = [
+    ("Your OTP for login is 483921.", "OTP"),
+    ("Hey bro, call me when you reach home.", "Personal"),
+    ("Your account balance is Rs 4,500.", "Banking"),
+    ("Your bank account has been blocked. Verify immediately.", "All (spam)"),
     ("Your OTP is 847291. Valid for 10 minutes.", "OTP"),
-    ("Hey, lunch tomorrow at 1pm?", "Personal"),
-    ("Account credited with Rs 5000", "Banking"),
-    ("FREE iPhone! Click here to claim now", "All (spam)"),
-    ("50% off sale this weekend only", "Promotions"),
-    ("Your monthly Netflix subscription renews tomorrow", "Subscription"),
 ]
 
 s1 = ort.InferenceSession(STAGE1, providers=["CPUExecutionProvider"])
@@ -38,15 +46,16 @@ print("Stage 1 inputs:", [(i.name, i.type, i.shape) for i in s1.get_inputs()])
 print("Stage 1 outputs:", [(o.name, o.type, o.shape) for o in s1.get_outputs()])
 print("Stage 2 inputs:", [(i.name, i.type, i.shape) for i in s2.get_inputs()])
 print("Stage 2 outputs:", [(o.name, o.type, o.shape) for o in s2.get_outputs()])
+print(f"Stage 1 threshold: {SPAM_THRESHOLD}")
 print()
 
 results = []
 for sms, expected_tab in SAMPLES:
     inp = np.array([sms], dtype=object)
     label1, prob1 = s1.run(None, {"input": inp})
+    spam_prob = float(prob1[0].get(1, prob1[0].get("1", 0.0)))
+    is_spam = spam_prob >= SPAM_THRESHOLD
     spam_label = int(label1[0])
-    spam_prob = float(prob1[0].get(1, prob1[0].get(0, 0.0)))
-    is_spam = spam_label == 1
 
     if is_spam:
         category = "unknown"
@@ -65,6 +74,7 @@ for sms, expected_tab in SAMPLES:
         "sms": sms[:60],
         "stage1_label": spam_label,
         "stage1_spam_prob": round(spam_prob, 4),
+        "stage1_threshold": SPAM_THRESHOLD,
         "is_spam": is_spam,
         "stage2_label": stage2_label,
         "db_category": category,

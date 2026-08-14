@@ -72,6 +72,13 @@ def load_data(dataset_path: str = None) -> pd.DataFrame:
     
     if dropped_rows > 0:
         logger.warning(f"Dropped {dropped_rows} rows with missing values")
+
+    # Remove exact duplicate SMS text to prevent train/test leakage
+    before_dedup = len(df)
+    df = df.drop_duplicates(subset=['text'], keep='first')
+    deduped_rows = before_dedup - len(df)
+    if deduped_rows > 0:
+        logger.warning(f"Removed {deduped_rows} exact duplicate SMS texts before splitting")
     
     logger.info(f"Loaded {len(df)} samples")
     logger.info(f"Label distribution:\n{df['label'].value_counts()}")
