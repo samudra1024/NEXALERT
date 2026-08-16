@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,54 +6,93 @@ import {
   StyleSheet,
   Alert,
   Modal,
+  AppState,
 } from 'react-native';
 import SmsController from '../../Controller/SmsController';
 
 export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
   const [checking, setChecking] = useState(false);
+  const [isDefault, setIsDefault] = useState(false);
+  const [awaitingRole, setAwaitingRole] = useState(false);
+
+  const checkDefaultStatus = useCallback(async () => {
+    try {
+      const defaultStatus = await SmsController.isDefaultSmsApp();
+      setIsDefault(defaultStatus);
+      if (defaultStatus && awaitingRole) {
+        setAwaitingRole(false);
+        setChecking(false);
+        onSuccess();
+      }
+      return defaultStatus;
+    } catch (error) {
+      console.error('Error checking default status:', error);
+      return false;
+    }
+  }, [awaitingRole, onSuccess]);
+
+  useEffect(() => {
+    if (visible) {
+      checkDefaultStatus();
+    }
+  }, [visible, checkDefaultStatus]);
+
+  useEffect(() => {
+    if (!awaitingRole) return undefined;
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        checkDefaultStatus();
+      }
+    });
+
+    return () => subscription.remove();
+  }, [awaitingRole, checkDefaultStatus]);
 
   const handleSetDefault = async () => {
     try {
       setChecking(true);
-      
-      // Request default SMS app using RoleManager
+      setAwaitingRole(true);
       await SmsController.requestDefaultSmsApp();
-      
-      // Check after a delay to see if user accepted
-      setTimeout(async () => {
-        try {
-          const isDefault = await SmsController.isDefaultSmsApp();
-          if (isDefault) {
-            onSuccess();
-          } else {
-            Alert.alert(
-              'Set as Default SMS App', 
-              'Please select this app in the system dialog. If no dialog appeared, the app may not meet all requirements.',
-              [
-                { text: 'Try Again', onPress: handleSetDefault },
-                { text: 'Open Settings', onPress: async () => {
-                  try {
-                    await SmsController.openSmsAppSettings();
-                  } catch (settingsError) {
-                    console.error('Error opening settings:', settingsError);
-                  }
-                  setChecking(false);
-                }},
-                { text: 'Cancel', onPress: () => setChecking(false) }
-              ]
-            );
-          }
-        } catch (error) {
-          console.error('Error checking default status:', error);
-          Alert.alert('Error', 'Failed to verify default SMS app status.');
-          setChecking(false);
-        }
-      }, 3000);
-      
+
+      // Immediate check — works when already default or instant grant
+      const immediate = await checkDefaultStatus();
+      if (immediate) return;
+
+      // Poll briefly after system dialog
+      const pollDelays = [500, 1000, 2000];
+      for (const delay of pollDelays) {
+        await new Promise(resolve => setTimeout(resolve, delay));
+        const granted = await checkDefaultStatus();
+        if (granted) return;
+      }
+
+      setChecking(false);
+      setAwaitingRole(false);
+      Alert.alert(
+        'Set as Default SMS App',
+        'Please select NexAlert in the system dialog. You can also open Settings to set it manually.',
+        [
+          { text: 'Try Again', onPress: handleSetDefault },
+          {
+            text: 'Open Settings',
+            onPress: async () => {
+              try {
+                await SmsController.openSmsAppSettings();
+              } catch (settingsError) {
+                console.error('Error opening settings:', settingsError);
+              }
+              setChecking(false);
+            },
+          },
+          { text: 'Cancel', style: 'cancel', onPress: () => setChecking(false) },
+        ],
+      );
     } catch (error) {
       console.error('Error requesting default SMS app:', error);
-      Alert.alert('Error', 'Failed to request default SMS app: ' + error.message);
+      Alert.alert('Error', 'Could not open the default SMS app dialog. Please try again.');
       setChecking(false);
+      setAwaitingRole(false);
     }
   };
 
@@ -63,27 +102,35 @@ export default function DefaultSmsPrompt({ visible, onClose, onSuccess }) {
         <View style={styles.container}>
           <Text style={styles.title}>Set as Default SMS App</Text>
           <Text style={styles.message}>
-            To provide the best SMS experience, please set this app as your default SMS application in Settings.
+            To receive and send SMS, NexAlert needs to be your default SMS application.
           </Text>
-          
+
+          <View style={[styles.statusBadge, isDefault ? styles.statusSuccess : styles.statusPending]}>
+            <Text style={styles.statusText}>
+              {isDefault ? '✓ NexAlert is your default SMS app' : 'Not set as default yet'}
+            </Text>
+          </View>
+
           <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={styles.cancelButton} 
+            <TouchableOpacity
+              style={styles.cancelButton}
               onPress={onClose}
               disabled={checking}
             >
               <Text style={styles.cancelText}>Later</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.setButton} 
-              onPress={handleSetDefault}
-              disabled={checking}
-            >
-              <Text style={styles.setText}>
-                {checking ? 'Requesting...' : 'Set as Default'}
-              </Text>
-            </TouchableOpacity>
+
+            {!isDefault && (
+              <TouchableOpacity
+                style={styles.setButton}
+                onPress={handleSetDefault}
+                disabled={checking}
+              >
+                <Text style={styles.setText}>
+                  {checking ? 'Opening...' : 'Set as Default'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -117,7 +164,25 @@ const styles = StyleSheet.create({
     color: '#6c757d',
     textAlign: 'center',
     lineHeight: 22,
-    marginBottom: 24,
+    marginBottom: 16,
+  },
+  statusBadge: {
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 20,
+  },
+  statusSuccess: {
+    backgroundColor: '#dcfce7',
+  },
+  statusPending: {
+    backgroundColor: '#fef3c7',
+  },
+  statusText: {
+    textAlign: 'center',
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
   },
   buttonContainer: {
     flexDirection: 'row',

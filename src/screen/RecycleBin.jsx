@@ -1,113 +1,63 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   Alert,
   StyleSheet,
-  StatusBar,
   ActivityIndicator,
-  Animated
+  Animated,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import SmsController from '../../Controller/SmsController';
 import { useTheme } from '../context/ThemeContext';
 import ScalePressable from '../components/animations/ScalePressable';
-import SlideInList from '../components/animations/SlideInList';
+import OptimizedList from '../components/OptimizedList';
 import { Swipeable } from 'react-native-gesture-handler';
 import { RotateCcw, Trash2, ArrowLeft } from 'lucide-react-native';
+import { ScreenContainer } from '../components/ScreenContainer';
 
-export default function RecycleBin() {
-  const { theme } = useTheme();
-  const navigation = useNavigation();
-  const [recycledMessages, setRecycledMessages] = useState([]);
-  const [loading, setLoading] = useState(true);
+const ROW_HEIGHT = 76;
 
-  const loadRecycledMessages = async () => {
-    setLoading(true);
-    try {
-      const messages = await SmsController.getRecycledConversations();
-      setRecycledMessages(messages);
-    } catch (error) {
-      console.error('Error loading recycled messages:', error);
-      Alert.alert('Error', 'Failed to load recycled messages.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadRecycledMessages();
-  }, []);
-
-  const handleRestore = async (id) => {
-    try {
-      await SmsController.restoreConversation(id);
-      Alert.alert('Restored', 'Conversation restored to main list.');
-      loadRecycledMessages(); // Refresh list
-    } catch (error) {
-      console.error('Error restoring:', error);
-      Alert.alert('Error', 'Failed to restore conversation.');
-    }
-  };
-
-  const handleDeletePermanent = async (id) => {
-    Alert.alert(
-      "Permanent Delete",
-      "Are you sure you want to permanently delete this conversation? This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await SmsController.permanentDeleteConversation(id);
-              loadRecycledMessages(); // Refresh list
-            } catch (error) {
-              console.error('Error deleting:', error);
-              Alert.alert('Error', 'Failed to delete conversation.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const renderRightActions = (progress, dragX, item) => {
+const RecycleRow = memo(function RecycleRow({
+  item,
+  theme,
+  onRestore,
+  onDeletePermanent,
+}) {
+  const renderRightActions = useCallback((progress, dragX) => {
     const scale = dragX.interpolate({
-      inputRange: [-100, 0],
-      outputRange: [1, 0],
+      inputRange: [-160, 0],
+      outputRange: [1, 0.5],
       extrapolate: 'clamp',
     });
 
     return (
       <View style={styles.actionsContainer}>
         <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: '#2563eb' }]} // Restore Blue
-          onPress={() => handleRestore(item.id)}
+          style={[styles.actionButton, { backgroundColor: '#2563eb' }]}
+          onPress={() => onRestore(item.id)}
         >
-          <Animated.View style={{ transform: [{ scale }] }}>
-            <RotateCcw size={24} color="#FFF" />
+          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+            <RotateCcw size={22} color="#FFF" />
             <Text style={styles.actionText}>Restore</Text>
           </Animated.View>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionButton, { backgroundColor: '#ef4444' }]} // Delete Red
-          onPress={() => handleDeletePermanent(item.id)}
+          style={[styles.actionButton, { backgroundColor: '#ef4444' }]}
+          onPress={() => onDeletePermanent(item.id)}
         >
-          <Animated.View style={{ transform: [{ scale }] }}>
-            <Trash2 size={24} color="#FFF" />
+          <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
+            <Trash2 size={22} color="#FFF" />
             <Text style={styles.actionText}>Delete</Text>
           </Animated.View>
         </TouchableOpacity>
       </View>
     );
-  };
+  }, [item.id, onRestore, onDeletePermanent]);
 
-  const renderItem = ({ item }) => (
-    <Swipeable renderRightActions={(progress, dragX) => renderRightActions(progress, dragX, item)}>
+  return (
+    <Swipeable renderRightActions={renderRightActions} overshootRight={false} friction={2}>
       <View style={[styles.chatItem, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
         <View style={[styles.avatar, { backgroundColor: item.avatarColor }]}>
           <Text style={styles.avatarText}>{item.avatar}</Text>
@@ -116,7 +66,7 @@ export default function RecycleBin() {
         <View style={styles.chatContent}>
           <Text style={[styles.contactName, { color: theme.text }]}>{item.name}</Text>
           <Text style={[styles.lastMessage, { color: theme.textSecondary }]} numberOfLines={1}>
-            {item.lastMessage}
+            {item.lastMessage || 'No preview'}
           </Text>
         </View>
 
@@ -126,12 +76,91 @@ export default function RecycleBin() {
       </View>
     </Swipeable>
   );
+});
+
+export default function RecycleBin() {
+  const { theme } = useTheme();
+  const navigation = useNavigation();
+  const [recycledMessages, setRecycledMessages] = useState([]);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadRecycledMessages = useCallback(async (background = false) => {
+    if (!background) {
+      setRefreshing(true);
+    }
+
+    try {
+      const messages = await SmsController.getRecycledConversations();
+      setRecycledMessages(messages);
+    } catch (error) {
+      console.error('Error loading recycled messages:', error);
+      if (!background) {
+        Alert.alert('Error', 'Failed to load recycled messages.');
+      }
+    } finally {
+      setInitialLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadRecycledMessages(recycledMessages.length > 0);
+    }, [loadRecycledMessages, recycledMessages.length]),
+  );
+
+  const handleRestore = async (id) => {
+    try {
+      await SmsController.restoreConversation(id);
+      setRecycledMessages(prev => prev.filter(item => item.id !== id));
+      Alert.alert('Restored', 'Conversation restored to main list.');
+    } catch (error) {
+      console.error('Error restoring:', error);
+      Alert.alert('Error', 'Failed to restore conversation.');
+    }
+  };
+
+  const handleDeletePermanent = async (id) => {
+    Alert.alert(
+      'Permanent Delete',
+      'Are you sure you want to permanently delete this conversation? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await SmsController.permanentDeleteConversation(id);
+              setRecycledMessages(prev => prev.filter(item => item.id !== id));
+            } catch (error) {
+              console.error('Error deleting:', error);
+              Alert.alert('Error', 'Failed to delete conversation.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const renderItem = useCallback(({ item }) => (
+    <RecycleRow
+      item={item}
+      theme={theme}
+      onRestore={handleRestore}
+      onDeletePermanent={handleDeletePermanent}
+    />
+  ), [theme, handleRestore, handleDeletePermanent]);
+
+  const keyExtractor = useCallback(item => item.id, []);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
-      {/* Header */}
+    <ScreenContainer
+      backgroundColor={theme.background}
+      statusBarStyle={theme.statusBar}
+      statusBarBackgroundColor={theme.statusBg}
+    >
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <ScalePressable onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
@@ -140,30 +169,34 @@ export default function RecycleBin() {
         <View style={{ width: 40 }} />
       </View>
 
-      {loading ? (
+      {initialLoading && recycledMessages.length === 0 ? (
         <ActivityIndicator size="large" color={theme.primary} style={styles.loader} />
       ) : (
-        <SlideInList
+        <OptimizedList
           data={recycledMessages}
-          keyExtractor={(item) => item.id}
+          keyExtractor={keyExtractor}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 20 }}
+          estimatedItemSize={ROW_HEIGHT}
+          useFixedItemLayout
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={refreshing}
+          onRefresh={() => loadRecycledMessages(false)}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Trash2 size={48} color={theme.textSecondary} />
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>Recycle Bin is empty</Text>
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
+                Recycle Bin is empty
+              </Text>
             </View>
           }
         />
       )}
-    </View>
+    </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -185,6 +218,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    minHeight: ROW_HEIGHT,
     borderBottomWidth: 0.5,
   },
   avatar: {
@@ -222,6 +256,10 @@ const styles = StyleSheet.create({
   loader: {
     marginTop: 40,
   },
+  listContent: {
+    paddingBottom: 20,
+    flexGrow: 1,
+  },
   emptyContainer: {
     alignItems: 'center',
     marginTop: 60,
@@ -241,7 +279,7 @@ const styles = StyleSheet.create({
   },
   actionText: {
     color: 'white',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     marginTop: 4,
   },

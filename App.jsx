@@ -1,8 +1,10 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { CardStyleInterpolators } from '@react-navigation/stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import AuthScreen from './src/screen/AuthScreen';
 import Onboarding from './src/screen/Onboarding';
@@ -19,11 +21,31 @@ import Spam from './src/screen/Spam';
 import { SettingsProvider } from './src/context/SettingsContext';
 import { ThemeProvider } from './src/context/ThemeContext';
 import SmsController from './Controller/SmsController';
+import AuthService from './src/services/authService';
+import useAppStore from './src/store/useAppStore';
 
 const Stack = createStackNavigator();
 
 export default function App() {
   const navigationRef = useRef(null);
+  const [initialRoute, setInitialRoute] = useState(null);
+  const bootstrap = useAppStore(state => state.bootstrap);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      await bootstrap();
+      SmsController.preloadContacts().catch(() => {});
+      try {
+        await AuthService.getAccessToken();
+      } catch {
+        // Token refresh failed — user will re-auth
+      }
+      const route = await AuthService.getInitialRoute();
+      if (mounted) setInitialRoute(route);
+    })();
+    return () => { mounted = false; };
+  }, [bootstrap]);
 
   const handleNavigationReady = useCallback(async () => {
     try {
@@ -40,13 +62,24 @@ export default function App() {
     }
   }, []);
 
+  if (!initialRoute) {
+    return (
+      <SafeAreaProvider>
+        <View style={styles.bootContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SettingsProvider>
-        <ThemeProvider>
-          <NavigationContainer ref={navigationRef} onReady={handleNavigationReady}>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SettingsProvider>
+          <ThemeProvider>
+            <NavigationContainer ref={navigationRef} onReady={handleNavigationReady}>
             <Stack.Navigator
-              initialRouteName="Onboarding"
+              initialRouteName={initialRoute}
               screenOptions={{
                 headerShown: false,
                 gestureEnabled: true,
@@ -79,5 +112,15 @@ export default function App() {
         </ThemeProvider>
       </SettingsProvider>
     </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  bootContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+  },
+});

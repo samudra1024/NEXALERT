@@ -1,11 +1,10 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  StatusBar,
   ActivityIndicator,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -13,6 +12,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import SmsController from '../../Controller/SmsController';
 import ScalePressable from '../components/animations/ScalePressable';
+import { ScreenContainer } from '../components/ScreenContainer';
 
 export default function Spam() {
   const { theme } = useTheme();
@@ -21,17 +21,36 @@ export default function Spam() {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const loadingRef = useRef(false);
 
   const loadSpam = useCallback(async (nextPage = 1, append = false) => {
+    if (loadingRef.current) {
+      return;
+    }
+
     try {
+      loadingRef.current = true;
       if (nextPage === 1) setLoading(true);
       const result = await SmsController.getSpamConversations(nextPage);
-      setItems(prev => (append ? [...prev, ...result.conversations] : result.conversations));
+
+      setItems(prev => {
+        if (!append) {
+          return result.conversations;
+        }
+
+        const existingIds = new Set(prev.map(item => item.id || item.threadId));
+        const uniqueConversations = result.conversations.filter(
+          item => !existingIds.has(item.id || item.threadId),
+        );
+        return uniqueConversations.length > 0 ? [...prev, ...uniqueConversations] : prev;
+      });
+
       setHasMore(result.hasMore);
       setPage(result.page);
     } catch (error) {
       console.error(error);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }, []);
@@ -43,8 +62,11 @@ export default function Spam() {
   );
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
+    <ScreenContainer
+      backgroundColor={theme.background}
+      statusBarStyle={theme.statusBar}
+      statusBarBackgroundColor={theme.statusBg}
+    >
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
@@ -58,8 +80,12 @@ export default function Spam() {
       ) : (
         <FlatList
           data={items}
-          keyExtractor={(item) => item.id}
-          onEndReached={() => hasMore && loadSpam(page + 1, true)}
+          keyExtractor={(item) => String(item.id || item.threadId)}
+          onEndReached={() => {
+            if (hasMore && !loadingRef.current) {
+              loadSpam(page + 1, true);
+            }
+          }}
           onEndReachedThreshold={0.4}
           ListEmptyComponent={
             <Text style={[styles.empty, { color: theme.textSecondary }]}>
@@ -85,7 +111,7 @@ export default function Spam() {
           )}
         />
       )}
-    </View>
+    </ScreenContainer>
   );
 }
 

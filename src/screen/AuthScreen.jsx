@@ -7,7 +7,6 @@ import {
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
-  SafeAreaView,
   Platform,
   Alert,
   ActivityIndicator,
@@ -15,10 +14,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import axios from 'axios';
-import { BaseURL } from '../config/API';
 import { useTheme } from '../context/ThemeContext';
 import ScalePressable from '../components/animations/ScalePressable';
+import { ScreenContainer } from '../components/ScreenContainer';
+import AuthService from '../services/authService';
+import useAppStore from '../store/useAppStore';
+import { Eye, EyeOff } from 'lucide-react-native';
 
 import OTP_ILLUSTRATION from '../assets/images/OTP.png';
 
@@ -35,6 +36,7 @@ const OTP_FONT_SIZE = OTP_BOX_SIZE < 40 ? 16 : 18;
 export default function AuthScreen() {
   const navigation = useNavigation();
   const { theme } = useTheme();
+  const login = useAppStore(state => state.login);
 
   // ── shared state ──
   const [currentStep, setCurrentStep] = useState(0); // 0 = phone, 1 = OTP
@@ -50,6 +52,7 @@ export default function AuthScreen() {
   const [timer, setTimer] = useState(120);
   const [resendActive, setResendActive] = useState(false);
   const [focusedOtpIndex, setFocusedOtpIndex] = useState(0);
+  const [otpVisible, setOtpVisible] = useState(true);
   const otpInputs = useRef([]);
 
   // ── Timer effect (only runs while on Step 2) ──
@@ -102,30 +105,17 @@ export default function AuthScreen() {
     }
 
     try {
-      const res = await axios.post(`${BaseURL}/send-otp`, {
-        phoneNumber: `+91${mobileNumber}`,
-      });
+      await AuthService.sendOtp(`+91${mobileNumber}`);
 
-      if (res.data.success) {
-        Alert.alert('OTP sent successfully!');
-        setPhoneLoading(false);
-        setTimer(120); // reset timer
-        animateToStep(1); // fade to OTP step
-      } else {
-        Alert.alert('Failed to send OTP. Please try again.');
-        setPhoneLoading(false);
-      }
+      Alert.alert('OTP sent successfully!');
+      setPhoneLoading(false);
+      setTimer(120);
+      animateToStep(1);
     } catch (error) {
       setPhoneLoading(false);
-      if (error.response) {
-        console.error('Error Response:', error.response);
-      } else if (error.request) {
-        console.error('Error Request:', error.request);
-      } else {
-        console.error('Error Message:', error.message);
-      }
       Alert.alert(
-        'An error occurred while sending OTP. Please check network, server, and IP configuration.',
+        'Unable to send OTP',
+        'Please check your network connection and try again.',
       );
     }
   };
@@ -176,12 +166,9 @@ export default function AuthScreen() {
     try {
       setTimer(120);
       setResendActive(false);
-      await axios.post(`${BaseURL}/resend-otp`, {
-        phoneNumber: `+91${mobileNumber}`,
-      });
+      await AuthService.resendOtp(`+91${mobileNumber}`);
       Alert.alert('OTP resent!');
     } catch (error) {
-      console.error(error);
       Alert.alert('Failed to resend OTP. Please try again.');
     }
   };
@@ -196,23 +183,14 @@ export default function AuthScreen() {
     }
 
     try {
-      const response = await axios.post(`${BaseURL}/verify-otp`, {
-        phoneNumber: `+91${mobileNumber}`,
-        code: otpCode,
+      await login(`+91${mobileNumber}`, otpCode);
+      await AuthService.setOnboardingComplete(true);
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'ChatsList' }],
       });
-
-      if (response.data.success) {
-        Alert.alert('OTP verified successfully!');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'ChatsList' }],
-        });
-      } else {
-        Alert.alert('Failed to verify OTP. Please try again.');
-      }
     } catch (error) {
-      console.error(error);
-      Alert.alert('Something went wrong. Please try again later.');
+      Alert.alert('Verification failed', 'Please check the OTP and try again.');
     } finally {
       setOtpLoading(false);
     }
@@ -288,6 +266,7 @@ export default function AuthScreen() {
               keyboardType="number-pad"
               maxLength={idx === 0 ? OTP_COUNT : 1}
               value={digit}
+              secureTextEntry={!otpVisible}
               onChangeText={text => handleOtpChange(text, idx)}
               onKeyPress={event => handleOtpKeyPress(event, idx)}
               onFocus={() => setFocusedOtpIndex(idx)}
@@ -300,6 +279,20 @@ export default function AuthScreen() {
             />
           ))}
         </View>
+
+        <TouchableOpacity
+          style={styles.otpVisibilityToggle}
+          onPress={() => setOtpVisible(v => !v)}
+          activeOpacity={0.7}>
+          {otpVisible ? (
+            <EyeOff size={18} color={theme.primary} />
+          ) : (
+            <Eye size={18} color={theme.primary} />
+          )}
+          <Text style={[styles.otpVisibilityText, { color: theme.primary }]}>
+            {otpVisible ? 'Hide OTP' : 'Show OTP'}
+          </Text>
+        </TouchableOpacity>
 
         {/* SUBMIT BUTTON */}
         <TouchableOpacity
@@ -351,15 +344,15 @@ export default function AuthScreen() {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-      <SafeAreaView style={styles.safeArea}>
+    <ScreenContainer style={styles.container}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Animated.View style={[styles.animatedWrap, { opacity: fadeAnim }]}>
           {currentStep === 0 ? renderPhoneStep() : renderOtpStep()}
         </Animated.View>
-      </SafeAreaView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ScreenContainer>
   );
 }
 
@@ -506,8 +499,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: OTP_GAP,
-    marginBottom: 28,
+    marginBottom: 12,
     width: '100%',
+  },
+  otpVisibilityToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 20,
+    paddingVertical: 6,
+  },
+  otpVisibilityText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   otpInput: {
     borderWidth: 2,

@@ -1,19 +1,141 @@
 import { PermissionsAndroid, Platform, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  buildContactLookupMap,
+  applyContactNamesToConversations,
+  getCachedContactMap,
+  setCachedContactMap,
+  formatPhoneNumber,
+  normalizePhoneNumber,
+  lookupContactName,
+  phonesMatch,
+} from '../src/utils/contactUtils';
+import ContactStore from '../src/services/ContactStore';
 
 const { SmsModule } = NativeModules;
 
-const DEFAULT_PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 30;
 const SMS_CACHE_TTL_MS = 60 * 1000;
+const CONVERSATIONS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 class SmsController {
   static _smsCache = null;
   static _smsCacheTimestamp = 0;
   static _permissionsGranted = false;
+  static _conversationsMemoryCache = null;
+  static _syncInProgress = false;
+  static _syncPromise = null;
+  static _contactMapPersisted = false;
+
+  static CONVERSATIONS_CACHE_KEY = 'sms_conversations_cache';
+  static CONTACT_MAP_CACHE_KEY = 'contact_lookup_cache';
+  static RECYCLE_BIN_META_KEY = 'recycled_sms_meta';
 
   static clearCache() {
     this._smsCache = null;
     this._smsCacheTimestamp = 0;
+  }
+
+  static clearConversationsCache() {
+    this._conversationsMemoryCache = null;
+  }
+
+  static async getCachedConversationsSnapshot() {
+    if (this._conversationsMemoryCache) {
+      return this._conversationsMemoryCache;
+    }
+
+    try {
+      const json = await AsyncStorage.getItem(this.CONVERSATIONS_CACHE_KEY);
+      if (!json) return null;
+      const parsed = JSON.parse(json);
+      this._conversationsMemoryCache = parsed;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  static async persistConversationsSnapshot(snapshot) {
+    this._conversationsMemoryCache = snapshot;
+    try {
+      await AsyncStorage.setItem(this.CONVERSATIONS_CACHE_KEY, JSON.stringify(snapshot));
+    } catch (error) {
+      console.warn('Failed to persist conversations cache:', error);
+    }
+  }
+
+  static mergeConversations(existing, incoming) {
+    if (!existing?.length) return incoming;
+    if (!incoming?.length) return existing;
+
+    const incomingMap = new Map(incoming.map(item => [item.id, item]));
+    const merged = [];
+    const seen = new Set();
+
+    existing.forEach(item => {
+      const updated = incomingMap.get(item.id);
+      if (updated) {
+        merged.push({ ...item, ...updated });
+        seen.add(item.id);
+      }
+    });
+
+    incoming.forEach(item => {
+      if (!seen.has(item.id)) {
+        merged.push(item);
+      }
+    });
+
+    merged.sort((a, b) => (b.rawTime || 0) - (a.rawTime || 0));
+    return merged;
+  }
+
+  static async persistContactMap(map) {
+    if (!map || Object.keys(map).length === 0) return;
+    setCachedContactMap(map);
+    try {
+      await AsyncStorage.setItem(this.CONTACT_MAP_CACHE_KEY, JSON.stringify(map));
+    } catch (error) {
+      console.warn('Failed to persist contact map:', error);
+    }
+  }
+
+  static async loadPersistedContactMap() {
+    if (this._contactMapPersisted && getCachedContactMap()) {
+      return getCachedContactMap();
+    }
+
+    try {
+      const json = await AsyncStorage.getItem(this.CONTACT_MAP_CACHE_KEY);
+      if (json) {
+        const map = JSON.parse(json);
+        setCachedContactMap(map);
+        this._contactMapPersisted = true;
+        return map;
+      }
+    } catch (error) {
+      console.warn('Failed to load persisted contact map:', error);
+    }
+    return null;
+  }
+
+  static applyStoredDisplayNames(conversations, metaMap = {}) {
+    return conversations.map(conv => {
+      const stored = metaMap[conv.id];
+      const storedName = stored?.displayName;
+      if (
+        storedName &&
+        !/^\d+$/.test(String(storedName).replace(/\D/g, ''))
+      ) {
+        return {
+          ...conv,
+          name: storedName,
+          avatar: storedName.charAt(0).toUpperCase(),
+        };
+      }
+      return conv;
+    });
   }
 
   static async requestAllSmsPermissions() {
@@ -235,6 +357,10 @@ class SmsController {
 
   static async getAllContacts() {
     await this.ensurePermissions();
+    if (SmsModule.getContactsPaginated) {
+      const result = await SmsModule.getContactsPaginated(1, 500, '');
+      return result.contacts || [];
+    }
     if (SmsModule.getAllContacts) {
       return SmsModule.getAllContacts();
     }
@@ -291,7 +417,52 @@ class SmsController {
     });
   }
 
-  static async getConversations(page = 1, limit = DEFAULT_PAGE_SIZE, filter = 'inbox') {
+  static async getConversations(page = 1, limit = DEFAULT_PAGE_SIZE, filter = 'inbox', options = {}) {
+    const { background = false, forceRefresh = false } = options;
+
+    if (page === 1 && !forceRefresh && !background) {
+      const snapshot = await this.getCachedConversationsSnapshot();
+      if (snapshot?.conversations?.length) {
+        const age = Date.now() - (snapshot.timestamp || 0);
+        if (age < CONVERSATIONS_CACHE_TTL_MS) {
+          this.syncConversationsInBackground(limit, filter).catch(() => {});
+          return {
+            conversations: snapshot.conversations,
+            hasMore: snapshot.hasMore ?? true,
+            page: snapshot.page ?? 1,
+            fromCache: true,
+          };
+        }
+      }
+    }
+
+    if (this._syncInProgress && page === 1 && background) {
+      return this._syncPromise || { conversations: [], hasMore: false, page: 1, fromCache: true };
+    }
+
+    const fetchPromise = this._fetchConversations(page, limit, filter, forceRefresh);
+
+    if (page === 1 && background) {
+      this._syncInProgress = true;
+      this._syncPromise = fetchPromise
+        .finally(() => {
+          this._syncInProgress = false;
+          this._syncPromise = null;
+        });
+      return this._syncPromise;
+    }
+
+    return fetchPromise;
+  }
+
+  static async syncConversationsInBackground(limit = DEFAULT_PAGE_SIZE, filter = 'inbox') {
+    if (this._syncInProgress) {
+      return this._syncPromise;
+    }
+    return this.getConversations(1, limit, filter, { background: true, forceRefresh: true });
+  }
+
+  static async _fetchConversations(page, limit, filter, forceRefresh) {
     try {
       const hasPermission = await this.ensurePermissions();
       if (!hasPermission) {
@@ -321,14 +492,24 @@ class SmsController {
           await this.getPinnedConversations(),
         );
 
-        return {
-          conversations: await this.resolveContactNames(conversations),
+        const resolved = await this.resolveContactNames(conversations, { skipNativeLookup: page > 1 });
+        const payload = {
+          conversations: resolved,
           hasMore: !!result.hasMore,
           page: result.page ?? page,
         };
+
+        if (page === 1) {
+          await this.persistConversationsSnapshot({
+            ...payload,
+            timestamp: Date.now(),
+          });
+        }
+
+        return payload;
       }
 
-      const messages = await this.fetchSmsMessages();
+      const messages = await this.fetchSmsMessages(forceRefresh);
       const excluded = new Set(excludeAddresses);
       const conversationsMap = {};
 
@@ -370,11 +551,21 @@ class SmsController {
         startIndex + limit,
       );
 
-      return {
-        conversations: await this.resolveContactNames(paginatedConversations),
+      const resolved = await this.resolveContactNames(paginatedConversations);
+      const payload = {
+        conversations: resolved,
         hasMore: startIndex + limit < sortedConversations.length,
         page,
       };
+
+      if (page === 1) {
+        await this.persistConversationsSnapshot({
+          ...payload,
+          timestamp: Date.now(),
+        });
+      }
+
+      return payload;
     } catch (error) {
       console.error('Error getting conversations:', error);
       throw error;
@@ -407,7 +598,7 @@ class SmsController {
 
       const messages = await this.fetchSmsMessages();
       const chatMessages = messages
-        .filter(msg => msg.address === contactId)
+        .filter(msg => phonesMatch(msg.address, contactId))
         .sort((a, b) => b.date - a.date);
 
       const startIndex = (page - 1) * limit;
@@ -435,7 +626,8 @@ class SmsController {
     }
     const messages = await this.fetchSmsMessages();
     const blockedSet = new Set(blocked);
-    return this.buildConversationMap(messages, address => blockedSet.has(address));
+    const conversations = this.buildConversationMap(messages, address => blockedSet.has(address));
+    return this.resolveContactNames(conversations);
   }
 
   static async getSpamConversations(page = 1, limit = DEFAULT_PAGE_SIZE) {
@@ -553,6 +745,7 @@ class SmsController {
         archived.push(address);
         await AsyncStorage.setItem(this.ARCHIVE_KEY, JSON.stringify(archived));
       }
+      this.clearConversationsCache();
       return true;
     } catch (e) {
       console.error('Error archiving conversation', e);
@@ -638,13 +831,39 @@ class SmsController {
     }
   }
 
-  static async recycleConversation(threadId) {
+  static async getRecycledMeta() {
+    try {
+      const json = await AsyncStorage.getItem(this.RECYCLE_BIN_META_KEY);
+      return json ? JSON.parse(json) : {};
+    } catch {
+      return {};
+    }
+  }
+
+  static async setRecycledMeta(meta) {
+    try {
+      await AsyncStorage.setItem(this.RECYCLE_BIN_META_KEY, JSON.stringify(meta));
+    } catch (error) {
+      console.warn('Failed to persist recycle bin metadata:', error);
+    }
+  }
+
+  static async recycleConversation(threadId, metadata = {}) {
     try {
       const recycled = await this.getRecycledMessageIds();
       if (!recycled.includes(threadId)) {
         recycled.push(threadId);
         await AsyncStorage.setItem(this.RECYCLE_BIN_KEY, JSON.stringify(recycled));
       }
+
+      const meta = await this.getRecycledMeta();
+      meta[threadId] = {
+        displayName: metadata.displayName || null,
+        normalizedPhone: normalizePhoneNumber(threadId),
+        recycledAt: Date.now(),
+      };
+      await this.setRecycledMeta(meta);
+      this.clearConversationsCache();
       return true;
     } catch (e) {
       console.error('Error recycling conversation', e);
@@ -657,6 +876,11 @@ class SmsController {
       let recycled = await this.getRecycledMessageIds();
       recycled = recycled.filter(id => id !== threadId);
       await AsyncStorage.setItem(this.RECYCLE_BIN_KEY, JSON.stringify(recycled));
+
+      const meta = await this.getRecycledMeta();
+      delete meta[threadId];
+      await this.setRecycledMeta(meta);
+      this.clearConversationsCache();
       return true;
     } catch (e) {
       console.error('Error restoring conversation', e);
@@ -682,29 +906,141 @@ class SmsController {
     }
   }
 
-  static async resolveContactNames(conversations) {
-    try {
-      const phoneNumbers = conversations.map(c => c.id);
-      if (phoneNumbers.length === 0) {
-        return conversations;
+  static async loadContactCache(forceRefresh = false) {
+    if (!forceRefresh) {
+      const memoryMap = getCachedContactMap();
+      if (memoryMap) {
+        return memoryMap;
       }
 
-      const contactNameMap = await SmsModule.getContactNames(phoneNumbers);
-      return conversations.map(conv => {
-        const savedName = contactNameMap[conv.id];
-        if (savedName) {
-          return {
-            ...conv,
-            name: savedName,
-            avatar: savedName.charAt(0).toUpperCase(),
-          };
+      const persisted = await this.loadPersistedContactMap();
+      if (persisted) {
+        return persisted;
+      }
+
+      const storeMap = await ContactStore.getLookupMap();
+      if (storeMap && Object.keys(storeMap).length > 0) {
+        return storeMap;
+      }
+    }
+
+    try {
+      await this.ensurePermissions();
+      await ContactStore.syncDeviceContacts(forceRefresh);
+      const map = await ContactStore.getLookupMap();
+      if (map && Object.keys(map).length > 0) {
+        await this.persistContactMap(map);
+        return map;
+      }
+
+      const deviceContacts = await this.getAllContacts();
+      const builtMap = buildContactLookupMap(deviceContacts);
+      await this.persistContactMap(builtMap);
+      return builtMap;
+    } catch (error) {
+      console.warn('Failed to load contact cache:', error);
+      return getCachedContactMap() || (await this.loadPersistedContactMap()) || {};
+    }
+  }
+
+  static async preloadContacts() {
+    return ContactStore.preload();
+  }
+
+  static async getContactsPaginated(page = 1, pageSize = 30, searchQuery = '') {
+    return ContactStore.loadContacts({
+      page,
+      pageSize,
+      searchQuery,
+      includeConversations: false,
+      backgroundSync: page === 1,
+    });
+  }
+
+  static async searchLocalContacts(query, limit = 50) {
+    return ContactStore.searchContacts(query, limit);
+  }
+
+  static async resolveContactNames(conversations, options = {}) {
+    const { skipNativeLookup = false } = options;
+
+    try {
+      const contactMap = await this.loadContactCache();
+      let mergedMap = { ...contactMap };
+
+      if (!skipNativeLookup && conversations.length > 0 && SmsModule.getContactNames) {
+        const unresolved = conversations
+          .filter(conv => !lookupContactName(conv.id, mergedMap))
+          .map(conv => conv.id);
+
+        if (unresolved.length > 0) {
+          const nativeMap = await SmsModule.getContactNames(unresolved);
+          Object.keys(nativeMap || {}).forEach(key => {
+            if (nativeMap[key]) {
+              mergedMap[key] = nativeMap[key];
+            }
+          });
+          await this.persistContactMap(mergedMap);
         }
-        return conv;
-      });
+      }
+
+      return applyContactNamesToConversations(conversations, mergedMap);
     } catch (error) {
       console.warn('Contact name resolution failed, using numbers:', error);
-      return conversations;
+      return conversations.map(conv => ({
+        ...conv,
+        name: conv.name && !/^\d+$/.test(String(conv.name).replace(/\D/g, ''))
+          ? conv.name
+          : formatPhoneNumber(conv.id),
+      }));
     }
+  }
+
+  static async searchConversations(query, limit = 50) {
+    const trimmed = (query || '').trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    const messages = await this.searchMessages(trimmed, limit);
+    if (messages.length === 0) {
+      return [];
+    }
+
+    const contactMap = await this.loadContactCache();
+    const conversationMap = new Map();
+
+    messages.forEach(msg => {
+      const address = msg.address;
+      if (!address || conversationMap.has(address)) {
+        return;
+      }
+
+      const savedName = lookupContactName(address, contactMap);
+      const name = savedName || (
+        /^\d+$/.test(String(address).replace(/\D/g, ''))
+          ? formatPhoneNumber(address)
+          : address
+      );
+
+      conversationMap.set(address, this.decorateConversation({
+        id: address,
+        name,
+        avatar: name.charAt(0).toUpperCase(),
+        lastMessage: msg.body || '',
+        time: new Date(msg.date).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        rawTime: msg.date,
+        unread: msg.read === 0 && msg.type === 1 ? 1 : 0,
+        category: msg.category ?? 'unknown',
+      }));
+    });
+
+    return Array.from(conversationMap.values()).sort(
+      (a, b) => (b.rawTime || 0) - (a.rawTime || 0),
+    );
   }
 
   static async getRecycledConversations() {
@@ -715,8 +1051,14 @@ class SmsController {
       }
 
       const recycledSet = new Set(recycledIds);
+      const meta = await this.getRecycledMeta();
       const messages = await this.fetchSmsMessages();
-      return this.buildConversationMap(messages, address => recycledSet.has(address));
+      const conversations = this.buildConversationMap(
+        messages,
+        address => recycledSet.has(address),
+      );
+      const withStoredNames = this.applyStoredDisplayNames(conversations, meta);
+      return this.resolveContactNames(withStoredNames, { skipNativeLookup: false });
     } catch (error) {
       console.error('Error getting recycled conversations:', error);
       return [];

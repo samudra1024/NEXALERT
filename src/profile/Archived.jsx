@@ -6,7 +6,6 @@ import {
     TouchableOpacity,
     FlatList,
     Alert,
-    StatusBar,
     ActivityIndicator,
     Platform,
 } from 'react-native';
@@ -14,6 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import SmsController from '../../Controller/SmsController';
 import { ArrowLeft, RotateCcw, Trash2 } from 'lucide-react-native';
+import { ScreenContainer } from '../components/ScreenContainer';
 
 export default function Archived() {
     const { theme } = useTheme();
@@ -71,7 +71,7 @@ export default function Archived() {
                     onPress: async () => {
                         // Unarchive first, then recycle
                         await SmsController.unarchiveConversation(item.id);
-                        await SmsController.recycleConversation(item.id);
+                        await SmsController.recycleConversation(item.id, { displayName: item.name });
                         setArchivedItems(prev => prev.filter(i => i.id !== item.id));
                     }
                 }
@@ -118,9 +118,11 @@ export default function Archived() {
     ), [theme, handleRestore, handleDelete]);
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+        <ScreenContainer
+            backgroundColor={theme.background}
+            statusBarStyle={theme.statusBar}
+            statusBarBackgroundColor={theme.statusBg}
+        >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -140,7 +142,7 @@ export default function Archived() {
                         <Text style={{ fontSize: 48, marginBottom: 16 }}>🗄️</Text>
                         <Text style={[styles.emptyTitle, { color: theme.text }]}>No archived chats</Text>
                         <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
-                            Swipe left on a chat to archive it
+                            Swipe right on a chat to archive it
                         </Text>
                     </View>
                 ) : (
@@ -157,7 +159,7 @@ export default function Archived() {
                     />
                 )}
             </View>
-        </View>
+        </ScreenContainer>
     );
 }
 

@@ -3,11 +3,9 @@ import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from "
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   Alert,
   StyleSheet,
-  StatusBar,
   Platform,
   ScrollView,
   Modal,
@@ -17,7 +15,10 @@ import {
   Animated,
   InteractionManager,
   RefreshControl,
+  Keyboard,
+  Vibration,
 } from "react-native";
+import OptimizedList from '../components/OptimizedList';
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import SmsController from '../../Controller/SmsController';
 import CategoryController from '../../Controller/CategoryController';
@@ -27,9 +28,12 @@ import useSmsEvents from '../hooks/useSmsEvents';
 import { Switch } from 'react-native';
 import ScalePressable from '../components/animations/ScalePressable';
 import { Swipeable } from 'react-native-gesture-handler';
-import { Search, RotateCcw, User, Plus, Sun, Moon, LogOut, Settings, Archive, CheckSquare, Edit, Trash2, Shield, Pin, MessageSquare } from 'lucide-react-native';
+import { ChatListSkeleton } from '../components/SkeletonLoader';
+import { ScreenContainer } from '../components/ScreenContainer';
+import { Search, RotateCcw, User, Plus, Sun, Moon, Settings, Archive, CheckSquare, Trash2, Shield, MessageSquare, X } from 'lucide-react-native';
 
 const CHAT_ROW_HEIGHT = 80;
+const SEARCH_DEBOUNCE_MS = 200;
 
 // Tab display label → ML category value (matches ml/model/config.py HAM_CATEGORIES)
 const ML_TAB_FILTERS = {
@@ -48,51 +52,64 @@ const ChatRow = memo(function ChatRow({
   onPress,
   onArchive,
   onDelete,
+  onSwipeableWillOpen,
 }) {
+  const swipeableRef = useRef(null);
   const renderRightActions = useCallback((progress, dragX) => {
     const scale = dragX.interpolate({
-      inputRange: [-100, 0],
-      outputRange: [1, 0],
+      inputRange: [-80, 0],
+      outputRange: [1, 0.5],
       extrapolate: 'clamp',
     });
 
     return (
-      <TouchableOpacity
-        style={[styles.swipeAction, { backgroundColor: '#ef4444' }]}
-        onPress={() => onDelete(item)}
-      >
+      <View style={[styles.swipeActionContainer, { backgroundColor: '#ef4444' }]}>
         <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
-          <Trash2 size={24} color="#FFF" />
+          <Trash2 size={22} color="#FFF" />
+          <Text style={styles.swipeActionLabel}>Delete</Text>
         </Animated.View>
-      </TouchableOpacity>
+      </View>
     );
-  }, [item, onDelete]);
+  }, []);
 
   const renderLeftActions = useCallback((progress, dragX) => {
     const scale = dragX.interpolate({
-      inputRange: [0, 100],
-      outputRange: [0, 1],
+      inputRange: [0, 80],
+      outputRange: [0.5, 1],
       extrapolate: 'clamp',
     });
 
     return (
-      <TouchableOpacity
-        style={[styles.swipeAction, { backgroundColor: '#1a73e8' }]}
-        onPress={() => onArchive(item)}
-      >
+      <View style={[styles.swipeActionContainer, { backgroundColor: '#1a73e8' }]}>
         <Animated.View style={{ transform: [{ scale }], alignItems: 'center' }}>
-          <Archive size={24} color="#FFF" />
+          <Archive size={22} color="#FFF" />
+          <Text style={styles.swipeActionLabel}>Archive</Text>
         </Animated.View>
-      </TouchableOpacity>
+      </View>
     );
-  }, [item, onArchive]);
+  }, []);
 
   return (
     <Swipeable
+      ref={swipeableRef}
       renderRightActions={renderRightActions}
       renderLeftActions={renderLeftActions}
       overshootRight={false}
       overshootLeft={false}
+      friction={2}
+      leftThreshold={40}
+      rightThreshold={40}
+      onSwipeableWillOpen={() => onSwipeableWillOpen(swipeableRef)}
+      onSwipeableOpen={(direction) => {
+        if (Platform.OS === 'android') Vibration.vibrate(10);
+        // RNGH direction: 'right' = swiped left (right actions), 'left' = swiped right (left actions)
+        if (direction === 'right') {
+          onDelete(item);
+        } else if (direction === 'left') {
+          onArchive(item);
+        }
+        swipeableRef.current?.close();
+      }}
     >
       <ScalePressable
         style={[styles.chatItem, { backgroundColor: theme.background }]}
@@ -128,6 +145,7 @@ export default function ChatsList() {
   const [contacts, setContacts] = useState([]);
   const [showDefaultPrompt, setShowDefaultPrompt] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [backgroundSyncing, setBackgroundSyncing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [unreadTotal, setUnreadTotal] = useState(0);
   const [pinnedIds, setPinnedIds] = useState([]);
@@ -137,9 +155,15 @@ export default function ChatsList() {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
+  const openSwipeableRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const searchDebounceRef = useRef(null);
+  const searchGenerationRef = useRef(0);
+  const searchAnim = useRef(new Animated.Value(0)).current;
 
   // UI States
   const [searchText, setSearchText] = useState('');
+  const [searchResults, setSearchResults] = useState(null);
   // Collections State — tabs aligned to ML category labels
   const [collections, setCollections] = useState(Object.keys(ML_TAB_FILTERS));
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -166,13 +190,15 @@ export default function ChatsList() {
     }
   };
 
-  const loadSmsMessages = useCallback(async (refresh = false, nextPage = 1) => {
+  const loadSmsMessages = useCallback(async (refresh = false, nextPage = 1, options = {}) => {
+    const { background = false } = options;
+
     if (loadingMoreRef.current && nextPage > 1) {
       return;
     }
 
     try {
-      if (nextPage === 1) {
+      if (nextPage === 1 && !background) {
         const hasPermissions = await requestSmsPermissions();
         if (!hasPermissions) {
           setInitialLoading(false);
@@ -184,16 +210,27 @@ export default function ChatsList() {
       if (nextPage > 1) {
         loadingMoreRef.current = true;
         setLoadingMore(true);
+      } else if (background) {
+        setBackgroundSyncing(true);
       }
 
       if (refresh) {
         SmsController.clearCache();
+        SmsController.clearConversationsCache();
       }
 
-      const result = await SmsController.getConversations(nextPage);
+      const result = await SmsController.getConversations(nextPage, undefined, 'inbox', {
+        background: background && nextPage === 1,
+        forceRefresh: refresh,
+      });
 
       if (nextPage === 1) {
-        setContacts(result.conversations);
+        setContacts(prev => {
+          if (background && prev.length > 0) {
+            return SmsController.mergeConversations(prev, result.conversations);
+          }
+          return result.conversations;
+        });
       } else {
         setContacts(prev => {
           const existingIds = new Set(prev.map(c => c.id));
@@ -212,25 +249,45 @@ export default function ChatsList() {
       }
     } catch (error) {
       console.error('SMS fetch error:', error);
-      if (nextPage === 1) {
+      if (nextPage === 1 && !background) {
         Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
       }
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
+      setBackgroundSyncing(false);
       setInitialLoading(false);
       setRefreshing(false);
     }
   }, []);
 
+  const loadCachedConversationsFirst = useCallback(async () => {
+    try {
+      const snapshot = await SmsController.getCachedConversationsSnapshot();
+      if (snapshot?.conversations?.length) {
+        setContacts(snapshot.conversations);
+        setHasMore(snapshot.hasMore ?? true);
+        setPage(snapshot.page ?? 1);
+        setInitialLoading(false);
+        loadSmsMessages(false, 1, { background: true });
+        return;
+      }
+    } catch (error) {
+      console.warn('Failed to load cached conversations:', error);
+    }
+
+    await loadSmsMessages(false, 1, { background: false });
+  }, [loadSmsMessages]);
+
   useEffect(() => {
     checkDefaultSmsApp();
-  }, []);
+    loadCachedConversationsFirst();
+  }, [loadCachedConversationsFirst]);
 
   useFocusEffect(
     useCallback(() => {
       const task = InteractionManager.runAfterInteractions(() => {
-        loadSmsMessages(true, 1);
+        loadSmsMessages(false, 1, { background: true });
       });
       return () => task.cancel();
     }, [loadSmsMessages]),
@@ -238,7 +295,7 @@ export default function ChatsList() {
 
   const handleIncomingSms = useCallback(() => {
     SmsController.clearCache();
-    loadSmsMessages(true, 1);
+    loadSmsMessages(true, 1, { background: true });
   }, [loadSmsMessages]);
 
   useSmsEvents(handleIncomingSms);
@@ -322,13 +379,84 @@ export default function ChatsList() {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            await SmsController.recycleConversation(item.id);
+            await SmsController.recycleConversation(item.id, { displayName: item.name });
             setContacts(prev => prev.filter(c => c.id !== item.id));
           },
         },
       ],
     );
   }, []);
+
+  const openSearch = useCallback(() => {
+    setIsSearchVisible(true);
+    Animated.timing(searchAnim, {
+      toValue: 1,
+      duration: 200,
+      useNativeDriver: false,
+    }).start(() => {
+      searchInputRef.current?.focus();
+    });
+  }, [searchAnim]);
+
+  const closeSearch = useCallback(() => {
+    Keyboard.dismiss();
+    Animated.timing(searchAnim, {
+      toValue: 0,
+      duration: 180,
+      useNativeDriver: false,
+    }).start(() => {
+      setIsSearchVisible(false);
+      setSearchText('');
+      setSearchResults(null);
+      searchGenerationRef.current += 1;
+    });
+  }, [searchAnim]);
+
+  const clearSearchText = useCallback(() => {
+    setSearchText('');
+    setSearchResults(null);
+    searchGenerationRef.current += 1;
+    searchInputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      if (!searchText.trim()) {
+        closeSearch();
+      }
+    });
+
+    return () => hideSub.remove();
+  }, [searchText, closeSearch]);
+
+  useEffect(() => {
+    if (!searchText.trim()) {
+      setSearchResults(null);
+      return undefined;
+    }
+
+    const generation = ++searchGenerationRef.current;
+
+    searchDebounceRef.current = setTimeout(async () => {
+      try {
+        const results = await SmsController.searchConversations(searchText.trim());
+        if (generation === searchGenerationRef.current) {
+          setSearchResults(results);
+        }
+      } catch (error) {
+        console.warn('Search failed:', error);
+        if (generation === searchGenerationRef.current) {
+          setSearchResults([]);
+        }
+      }
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => {
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
+    };
+  }, [searchText]);
 
   const handleAddCollection = async () => {
     if (newCollectionName.trim()) {
@@ -366,7 +494,7 @@ export default function ChatsList() {
 
   // Filter Logic
   const filteredContacts = useMemo(() => {
-    let result = contacts;
+    let result = searchResults ?? contacts;
 
     // Category Filter — match conversation ML category to selected tab
     if (selectedCategory !== 'All') {
@@ -374,17 +502,25 @@ export default function ChatsList() {
       result = result.filter(c => c.category === mlCategory);
     }
 
-    // Search Filter
-    if (searchText) {
+    // Local filter fallback when debounced search has not returned yet
+    if (searchText && searchResults === null) {
       const lower = searchText.toLowerCase();
       result = result.filter(c =>
         (c.name && c.name.toLowerCase().includes(lower)) ||
-        (c.lastMessage && c.lastMessage.toLowerCase().includes(lower))
+        (c.lastMessage && c.lastMessage.toLowerCase().includes(lower)) ||
+        (c.id && c.id.includes(searchText))
       );
     }
 
     return result;
-  }, [contacts, selectedCategory, searchText]);
+  }, [contacts, searchResults, selectedCategory, searchText]);
+
+  const handleSwipeableWillOpen = useCallback((swipeRef) => {
+    if (openSwipeableRef.current && openSwipeableRef.current !== swipeRef.current) {
+      openSwipeableRef.current?.close();
+    }
+    openSwipeableRef.current = swipeRef.current;
+  }, []);
 
   const renderItem = useCallback(({ item }) => (
     <ChatRow
@@ -393,19 +529,14 @@ export default function ChatsList() {
       onPress={handleOpenChat}
       onArchive={handleArchiveConversation}
       onDelete={handleDeleteConversation}
+      onSwipeableWillOpen={handleSwipeableWillOpen}
     />
-  ), [theme, handleOpenChat, handleArchiveConversation, handleDeleteConversation]);
+  ), [theme, handleOpenChat, handleArchiveConversation, handleDeleteConversation, handleSwipeableWillOpen]);
 
   const keyExtractor = useCallback((item) => item.id, []);
   const flatListContentStyle = useMemo(() => ({ paddingBottom: 100 }), []);
-  const getItemLayout = useCallback(
-    (_, index) => ({
-      length: CHAT_ROW_HEIGHT,
-      offset: CHAT_ROW_HEIGHT * index,
-      index,
-    }),
-    [],
-  );
+  const fabBottomStyle = useMemo(() => ({ bottom: 30 }), []);
+  const menuTopStyle = useMemo(() => ({ top: 60 }), []);
   const handleEndReached = useCallback(() => {
     if (hasMore && !loadingMoreRef.current && !searchText && selectedCategory === 'All') {
       loadSmsMessages(false, page + 1);
@@ -414,12 +545,7 @@ export default function ChatsList() {
 
   const listEmptyComponent = useMemo(() => (
     initialLoading ? (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={theme.primary} />
-        <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
-          Loading conversations...
-        </Text>
-      </View>
+      <ChatListSkeleton theme={theme} />
     ) : (
       <View style={styles.loadingContainer}>
         <Text style={[styles.loadingText, { color: theme.textSecondary }]}>
@@ -427,24 +553,50 @@ export default function ChatsList() {
         </Text>
       </View>
     )
-  ), [initialLoading, theme.primary, theme.textSecondary]);
+  ), [initialLoading, theme]);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+    <ScreenContainer
+      backgroundColor={theme.background}
+      statusBarStyle={theme.statusBar}
+      statusBarBackgroundColor={theme.statusBg}
+    >
       {/* Enhanced Header */}
       <View style={[styles.header, { backgroundColor: theme.background, borderBottomColor: theme.border }]}>
         {isSearchVisible ? (
-          <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Search messages..."
-            placeholderTextColor={theme.textSecondary}
-            value={searchText}
-            onChangeText={setSearchText}
-            autoFocus
-            onBlur={() => !searchText && setIsSearchVisible(false)}
-          />
+          <Animated.View
+            style={[
+              styles.searchBarRow,
+              {
+                backgroundColor: theme.surface,
+                borderColor: theme.border,
+                borderWidth: 1,
+                opacity: searchAnim.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }),
+              },
+            ]}
+          >
+            <Search size={20} color={theme.textSecondary} style={styles.searchLeadingIcon} />
+            <TextInput
+              ref={searchInputRef}
+              style={[styles.searchInput, { color: theme.text }]}
+              placeholder="Search messages..."
+              placeholderTextColor={theme.textSecondary}
+              value={searchText}
+              onChangeText={setSearchText}
+              autoFocus
+              returnKeyType="search"
+              onSubmitEditing={Keyboard.dismiss}
+            />
+            {searchText.length > 0 ? (
+              <TouchableOpacity
+                style={styles.searchClearButton}
+                onPress={clearSearchText}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X size={18} color={theme.textSecondary} />
+              </TouchableOpacity>
+            ) : null}
+          </Animated.View>
         ) : (
           <View style={{ flex: 1 }}>
             <Text style={[styles.headerTitle, { color: theme.text }]}>Messages</Text>
@@ -452,13 +604,15 @@ export default function ChatsList() {
               <Text style={{ color: theme.textSecondary, fontSize: 13 }}>
                 {unreadTotal} unread
               </Text>
+            ) : backgroundSyncing ? (
+              <Text style={{ color: theme.textSecondary, fontSize: 12 }}>Syncing…</Text>
             ) : null}
           </View>
         )}
 
         <View style={styles.headerActions}>
           {!isSearchVisible && (
-            <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setIsSearchVisible(true)}>
+            <TouchableOpacity style={[styles.searchIconButton, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={openSearch}>
               <Search size={22} color={theme.text} />
             </TouchableOpacity>
           )}
@@ -523,21 +677,17 @@ export default function ChatsList() {
         </ScrollView>
       </View>
 
-      <FlatList
+      <OptimizedList
         data={filteredContacts}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
+        estimatedItemSize={CHAT_ROW_HEIGHT}
+        useFixedItemLayout
         showsVerticalScrollIndicator={false}
         style={styles.flatList}
         contentContainerStyle={flatListContentStyle}
         onEndReached={handleEndReached}
         onEndReachedThreshold={0.4}
-        getItemLayout={getItemLayout}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={12}
-        windowSize={8}
-        initialNumToRender={12}
-        updateCellsBatchingPeriod={100}
         ListEmptyComponent={listEmptyComponent}
         refreshControl={
           <RefreshControl
@@ -563,7 +713,7 @@ export default function ChatsList() {
       >
         <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
           <View style={styles.modalOverlay}>
-            <View style={[styles.menuContainer, { backgroundColor: theme.background, shadowColor: theme.mode === 'dark' ? '#fff' : '#000' }]}>
+            <View style={[styles.menuContainer, { backgroundColor: theme.background, shadowColor: theme.mode === 'dark' ? '#fff' : '#000' }, menuTopStyle]}>
 
               <TouchableOpacity
                 style={styles.menuItem}
@@ -667,20 +817,6 @@ export default function ChatsList() {
                 />
               </View>
 
-              <View style={[styles.divider, { backgroundColor: theme.border }]} />
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setIsProfileMenuVisible(false);
-                  navigation.replace('Onboarding');
-                }}
-              >
-                <View style={[styles.menuIconBox, { backgroundColor: theme.surface }]}>
-                  <LogOut size={18} color={theme.danger} />
-                </View>
-                <Text style={[styles.menuText, { color: theme.danger }]}>Logout</Text>
-              </TouchableOpacity>
             </View>
           </View>
         </TouchableWithoutFeedback>
@@ -733,7 +869,7 @@ export default function ChatsList() {
 
       {/* Floating Action Button */}
       <ScalePressable
-        style={styles.fab}
+        style={[styles.fab, fabBottomStyle]}
         onPress={() => navigation.navigate('NewChat')}
       >
         <Plus size={32} color="#ffffff" />
@@ -747,7 +883,7 @@ export default function ChatsList() {
           Alert.alert('Success', 'App is now your default SMS app!');
         }}
       />
-    </View>
+    </ScreenContainer>
   );
 }
 
@@ -761,16 +897,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#ffffff',
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingTop: 12,
+    paddingBottom: 14,
     borderBottomWidth: 0,
     elevation: 0,
   },
   headerTitle: {
     fontSize: 26,
     fontWeight: '800',
+    lineHeight: 34,
     color: '#1a1a1a',
-    flex: 1,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+    ...(Platform.OS === 'android' && {
+      includeFontPadding: false,
+      textAlignVertical: 'center',
+    }),
   },
   headerActions: {
     flexDirection: 'row',
@@ -778,9 +919,26 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     color: '#333',
-    paddingVertical: 0,
+    paddingVertical: 8,
+  },
+  searchBarRow: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f2f5',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginRight: 8,
+    minHeight: 44,
+  },
+  searchLeadingIcon: {
+    marginRight: 8,
+  },
+  searchClearButton: {
+    padding: 4,
+    marginLeft: 4,
   },
   iconButton: {
     marginLeft: 16,
@@ -972,7 +1130,6 @@ const styles = StyleSheet.create({
   },
   menuContainer: {
     position: 'absolute',
-    top: 60,
     right: 20,
     backgroundColor: 'white',
     borderRadius: 12,
@@ -1014,6 +1171,17 @@ const styles = StyleSheet.create({
   },
 
   // Swipe Actions
+  swipeActionContainer: {
+    width: 80,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  swipeActionLabel: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
+  },
   swipeAction: {
     width: 70,
     justifyContent: 'center',

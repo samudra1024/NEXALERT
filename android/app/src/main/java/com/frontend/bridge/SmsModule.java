@@ -23,10 +23,20 @@ import com.facebook.react.modules.core.DeviceEventManagerModule;
 import java.util.ArrayList;
 import com.frontend.db.MlDatabaseHelper;
 import com.frontend.db.MlMetadataContract;
+import com.frontend.db.ContactDatabaseHelper;
+import com.frontend.db.ContactRecord;
+import com.frontend.db.SyncStats;
+import android.database.ContentObserver;
+import android.os.Handler;
+import android.os.Looper;
 
 public class SmsModule extends ReactContextBaseJavaModule {
 
     private static ReactApplicationContext reactContextHolder;
+    private static ContentObserver contactsObserver;
+    private static final Handler contactsHandler = new Handler(Looper.getMainLooper());
+    private static Runnable contactsChangeRunnable;
+    private static volatile boolean contactsSyncInProgress = false;
 
     public SmsModule(ReactApplicationContext reactContext) {
         super(reactContext);
@@ -243,47 +253,126 @@ public class SmsModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void getChatMessagesPaginated(String address, int page, int limit, Promise promise) {
         try {
-            int offset = Math.max(0, (page - 1) * limit);
+            int safePage = Math.max(1, page);
+            int safeLimit = Math.max(1, Math.min(limit, 100));
+            int offset = (safePage - 1) * safeLimit;
             java.util.HashMap<String, WritableMap> mlMap = loadMlMap();
 
             ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
             Uri uri = Uri.parse("content://sms");
             String[] projection = { "_id", "address", "body", "date", "type", "read" };
-            String selection = "address = ?";
-            String[] selectionArgs = { address };
-            String sortOrder = "date DESC LIMIT " + limit + " OFFSET " + offset;
+            AddressSelection addressSelection = buildAddressSelection(address);
 
-            Cursor cursor = contentResolver.query(uri, projection, selection, selectionArgs, sortOrder);
+            // Do not rely on LIMIT/OFFSET in sortOrder — many SMS providers ignore it.
+            Cursor cursor = contentResolver.query(
+                uri,
+                projection,
+                addressSelection.selection,
+                addressSelection.selectionArgs,
+                "date DESC"
+            );
             WritableArray smsArray = Arguments.createArray();
+            boolean hasMore = false;
 
             if (cursor != null) {
-                while (cursor.moveToNext()) {
-                    WritableMap smsMap = Arguments.createMap();
-                    String date = cursor.getString(cursor.getColumnIndexOrThrow("date"));
-                    String body = cursor.getString(cursor.getColumnIndexOrThrow("body"));
-
-                    smsMap.putString("_id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
-                    smsMap.putString("id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
-                    smsMap.putString("address", address);
-                    smsMap.putString("body", body != null ? body : "");
-                    smsMap.putString("date", date);
-                    smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
-                    smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
-                    attachMlData(smsMap, address, date, mlMap);
-                    smsArray.pushMap(smsMap);
+                try {
+                    int totalCount = cursor.getCount();
+                    if (totalCount > offset && cursor.moveToPosition(offset)) {
+                        int collected = 0;
+                        do {
+                            if (collected >= safeLimit) {
+                                hasMore = true;
+                                break;
+                            }
+                            smsArray.pushMap(readSmsRowFromCursor(cursor, address, mlMap));
+                            collected++;
+                        } while (cursor.moveToNext());
+                    }
+                } finally {
+                    cursor.close();
                 }
-                cursor.close();
             }
 
-            boolean hasMore = smsArray.size() >= limit;
             WritableMap response = Arguments.createMap();
             response.putArray("messages", smsArray);
             response.putBoolean("hasMore", hasMore);
-            response.putInt("page", page);
+            response.putInt("page", safePage);
             promise.resolve(response);
         } catch (Exception e) {
             promise.reject("CHAT_MESSAGES_ERROR", e.getMessage());
         }
+    }
+
+    private WritableMap readSmsRowFromCursor(
+        Cursor cursor,
+        String fallbackAddress,
+        java.util.HashMap<String, WritableMap> mlMap
+    ) {
+        WritableMap smsMap = Arguments.createMap();
+        String storedAddress = cursor.getString(cursor.getColumnIndexOrThrow("address"));
+        String date = cursor.getString(cursor.getColumnIndexOrThrow("date"));
+        String body = cursor.getString(cursor.getColumnIndexOrThrow("body"));
+        String resolvedAddress = storedAddress != null ? storedAddress : fallbackAddress;
+
+        smsMap.putString("_id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
+        smsMap.putString("id", cursor.getString(cursor.getColumnIndexOrThrow("_id")));
+        smsMap.putString("address", resolvedAddress);
+        smsMap.putString("body", body != null ? body : "");
+        smsMap.putString("date", date);
+        smsMap.putString("type", cursor.getString(cursor.getColumnIndexOrThrow("type")));
+        smsMap.putString("read", cursor.getString(cursor.getColumnIndexOrThrow("read")));
+        attachMlData(smsMap, resolvedAddress, date, mlMap);
+        return smsMap;
+    }
+
+    private static class AddressSelection {
+        final String selection;
+        final String[] selectionArgs;
+
+        AddressSelection(String selection, String[] selectionArgs) {
+            this.selection = selection;
+            this.selectionArgs = selectionArgs;
+        }
+    }
+
+    private AddressSelection buildAddressSelection(String address) {
+        String[] variants = buildPhoneVariants(address);
+        java.util.LinkedHashSet<String> uniqueVariants = new java.util.LinkedHashSet<>();
+        for (String variant : variants) {
+            if (variant != null && !variant.isEmpty()) {
+                uniqueVariants.add(variant);
+            }
+        }
+
+        if (uniqueVariants.isEmpty()) {
+            return new AddressSelection("address = ?", new String[] { address });
+        }
+
+        java.util.ArrayList<String> argsList = new java.util.ArrayList<>();
+        StringBuilder selection = new StringBuilder("(");
+        int index = 0;
+        for (String variant : uniqueVariants) {
+            if (index > 0) {
+                selection.append(" OR ");
+            }
+            selection.append("address = ?");
+            argsList.add(variant);
+            index++;
+        }
+        selection.append(")");
+
+        String digits = address.replaceAll("[^0-9]", "");
+        if (digits.length() >= 10) {
+            String last10 = digits.substring(digits.length() - 10);
+            selection.append(" OR address LIKE ? OR address LIKE ?");
+            argsList.add("%" + last10);
+            argsList.add("%" + last10 + "%");
+        }
+
+        return new AddressSelection(
+            selection.toString(),
+            argsList.toArray(new String[0])
+        );
     }
 
     @ReactMethod
@@ -516,11 +605,10 @@ public class SmsModule extends ReactContextBaseJavaModule {
             ContentValues values = new ContentValues();
             values.put("read", 1);
 
-            // Only mark received messages (type=1) as read
-            String selection = "address = ? AND read = 0 AND type = 1";
-            String[] selectionArgs = { address };
+            AddressSelection addressSelection = buildAddressSelection(address);
+            String selection = "(" + addressSelection.selection + ") AND read = 0 AND type = 1";
 
-            int updatedRows = contentResolver.update(uri, values, selection, selectionArgs);
+            int updatedRows = contentResolver.update(uri, values, selection, addressSelection.selectionArgs);
             promise.resolve("Marked " + updatedRows + " messages as read");
         } catch (Exception e) {
             promise.reject("MARK_READ_ERROR", e.getMessage());
@@ -696,33 +784,275 @@ public class SmsModule extends ReactContextBaseJavaModule {
                 String phoneNumber = phoneNumbers.getString(i);
                 if (phoneNumber == null || phoneNumber.isEmpty()) continue;
 
-                Uri lookupUri = Uri.withAppendedPath(
-                    ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
-                    Uri.encode(phoneNumber)
-                );
-
-                Cursor cursor = contentResolver.query(
-                    lookupUri,
-                    new String[]{ ContactsContract.PhoneLookup.DISPLAY_NAME },
-                    null, null, null
-                );
-
-                if (cursor != null) {
-                    if (cursor.moveToFirst()) {
-                        String name = cursor.getString(
-                            cursor.getColumnIndexOrThrow(ContactsContract.PhoneLookup.DISPLAY_NAME)
-                        );
-                        if (name != null && !name.isEmpty()) {
-                            contactMap.putString(phoneNumber, name);
-                        }
-                    }
-                    cursor.close();
+                String name = lookupContactName(contentResolver, phoneNumber);
+                if (name != null && !name.isEmpty()) {
+                    contactMap.putString(phoneNumber, name);
                 }
             }
 
             promise.resolve(contactMap);
         } catch (Exception e) {
             promise.reject("CONTACT_LOOKUP_ERROR", e.getMessage());
+        }
+    }
+
+    private String lookupContactName(ContentResolver contentResolver, String phoneNumber) {
+        String[] variants = buildPhoneVariants(phoneNumber);
+        for (String variant : variants) {
+            if (variant == null || variant.isEmpty()) continue;
+
+            Uri lookupUri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(variant)
+            );
+
+            Cursor cursor = contentResolver.query(
+                lookupUri,
+                new String[]{ ContactsContract.PhoneLookup.DISPLAY_NAME },
+                null, null, null
+            );
+
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        String name = cursor.getString(
+                            cursor.getColumnIndexOrThrow(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                        );
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+                        }
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String[] buildPhoneVariants(String phoneNumber) {
+        String digits = phoneNumber.replaceAll("[^0-9]", "");
+        java.util.ArrayList<String> variants = new java.util.ArrayList<>();
+        variants.add(phoneNumber);
+        variants.add(digits);
+
+        if (digits.length() >= 10) {
+            String last10 = digits.substring(digits.length() - 10);
+            variants.add(last10);
+            variants.add("+91" + last10);
+            variants.add("91" + last10);
+            variants.add("0" + last10);
+        }
+
+        return variants.toArray(new String[0]);
+    }
+
+    public static void emitContactsChanged() {
+        if (reactContextHolder == null) {
+            return;
+        }
+        try {
+            reactContextHolder
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("onContactsChanged", Arguments.createMap());
+        } catch (Exception e) {
+            android.util.Log.e("SmsModule", "Failed to emit onContactsChanged", e);
+        }
+    }
+
+    @ReactMethod
+    public void startContactsObserver(Promise promise) {
+        try {
+            if (contactsObserver != null) {
+                promise.resolve(true);
+                return;
+            }
+
+            ContentResolver resolver = getReactApplicationContext().getContentResolver();
+            contactsObserver = new ContentObserver(contactsHandler) {
+                @Override
+                public void onChange(boolean selfChange) {
+                    if (contactsChangeRunnable != null) {
+                        contactsHandler.removeCallbacks(contactsChangeRunnable);
+                    }
+                    contactsChangeRunnable = () -> emitContactsChanged();
+                    contactsHandler.postDelayed(contactsChangeRunnable, 750);
+                }
+            };
+
+            resolver.registerContentObserver(
+                ContactsContract.Contacts.CONTENT_URI,
+                true,
+                contactsObserver
+            );
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("CONTACTS_OBSERVER_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void stopContactsObserver(Promise promise) {
+        try {
+            if (contactsObserver != null) {
+                getReactApplicationContext().getContentResolver().unregisterContentObserver(contactsObserver);
+                contactsObserver = null;
+            }
+            if (contactsChangeRunnable != null) {
+                contactsHandler.removeCallbacks(contactsChangeRunnable);
+                contactsChangeRunnable = null;
+            }
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("CONTACTS_OBSERVER_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void syncDeviceContacts(Promise promise) {
+        if (contactsSyncInProgress) {
+            promise.resolve(buildSyncResult(0, 0, 0, 0, true));
+            return;
+        }
+
+        contactsSyncInProgress = true;
+        new Thread(() -> {
+            try {
+                SyncStats stats = performDeviceContactSync();
+                promise.resolve(buildSyncResult(
+                    stats.getInserted(),
+                    stats.getUpdated(),
+                    stats.getDeleted(),
+                    stats.getUnchanged(),
+                    false
+                ));
+            } catch (Exception e) {
+                promise.reject("CONTACT_SYNC_ERROR", e.getMessage());
+            } finally {
+                contactsSyncInProgress = false;
+            }
+        }).start();
+    }
+
+    private WritableMap buildSyncResult(int inserted, int updated, int deleted, int unchanged, boolean skipped) {
+        WritableMap result = Arguments.createMap();
+        result.putInt("inserted", inserted);
+        result.putInt("updated", updated);
+        result.putInt("deleted", deleted);
+        result.putInt("unchanged", unchanged);
+        result.putBoolean("skipped", skipped);
+        result.putDouble("timestamp", (double) System.currentTimeMillis());
+        return result;
+    }
+
+    private SyncStats performDeviceContactSync() {
+        ContentResolver contentResolver = getReactApplicationContext().getContentResolver();
+        ContactDatabaseHelper dbHelper = new ContactDatabaseHelper(getReactApplicationContext());
+        java.util.ArrayList<ContactRecord> records = new java.util.ArrayList<>();
+        java.util.HashSet<String> seen = new java.util.HashSet<>();
+        long now = System.currentTimeMillis();
+
+        Cursor cursor = contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            new String[] {
+                ContactsContract.CommonDataKinds.Phone._ID,
+                ContactsContract.CommonDataKinds.Phone.CONTACT_ID,
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER,
+                ContactsContract.CommonDataKinds.Phone.PHOTO_URI,
+            },
+            null,
+            null,
+            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+        );
+
+        if (cursor != null) {
+            try {
+                while (cursor.moveToNext()) {
+                    String rowId = cursor.getString(0);
+                    String displayName = cursor.getString(2);
+                    String number = cursor.getString(3);
+                    String photoUri = cursor.getString(4);
+
+                    if (number == null || number.isEmpty()) {
+                        continue;
+                    }
+
+                    String phoneDigits = number.replaceAll("[^0-9+]", "");
+                    String normalizedPhone = ContactDatabaseHelper.normalizePhone(phoneDigits);
+                    String contactId = rowId != null ? rowId : (normalizedPhone + "|" + displayName);
+                    String dedupeKey = contactId + "|" + normalizedPhone;
+
+                    if (seen.contains(dedupeKey)) {
+                        continue;
+                    }
+                    seen.add(dedupeKey);
+
+                    String name = (displayName != null && !displayName.isEmpty()) ? displayName : phoneDigits;
+                    String normalizedName = ContactDatabaseHelper.normalizeName(name);
+                    String contentHash = ContactDatabaseHelper.buildContentHash(name, phoneDigits, photoUri);
+
+                    records.add(new ContactRecord(
+                        contactId,
+                        name,
+                        normalizedName,
+                        phoneDigits,
+                        normalizedPhone,
+                        photoUri,
+                        contentHash,
+                        now
+                    ));
+                }
+            } finally {
+                cursor.close();
+            }
+        }
+
+        return dbHelper.applyIncrementalSync(records);
+    }
+
+    @ReactMethod
+    public void getContactsPaginated(int page, int pageSize, String searchQuery, Promise promise) {
+        try {
+            int safePage = Math.max(1, page);
+            int safeSize = Math.max(1, Math.min(pageSize, 100));
+            int offset = (safePage - 1) * safeSize;
+
+            ContactDatabaseHelper dbHelper = new ContactDatabaseHelper(getReactApplicationContext());
+            WritableArray contacts = dbHelper.queryContacts(offset, safeSize, searchQuery);
+            int total = dbHelper.getCount(searchQuery);
+            boolean hasMore = offset + contacts.size() < total;
+
+            android.util.Log.d(
+                "SmsModule",
+                "[CONTACT PAGINATION] getContactsPaginated page=" + safePage
+                    + " pageSize=" + safeSize
+                    + " offset=" + offset
+                    + " returned=" + contacts.size()
+                    + " total=" + total
+                    + " hasMore=" + hasMore
+            );
+
+            WritableMap result = Arguments.createMap();
+            result.putArray("contacts", contacts);
+            result.putInt("page", safePage);
+            result.putInt("pageSize", safeSize);
+            result.putInt("total", total);
+            result.putBoolean("hasMore", hasMore);
+            result.putDouble("lastSync", (double) dbHelper.getLastSyncTimestamp());
+            promise.resolve(result);
+        } catch (Exception e) {
+            promise.reject("CONTACTS_PAGINATED_ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getContactsCount(String searchQuery, Promise promise) {
+        try {
+            ContactDatabaseHelper dbHelper = new ContactDatabaseHelper(getReactApplicationContext());
+            promise.resolve(dbHelper.getCount(searchQuery));
+        } catch (Exception e) {
+            promise.reject("CONTACTS_COUNT_ERROR", e.getMessage());
         }
     }
 }

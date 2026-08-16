@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
   Image,
   Dimensions,
   TouchableOpacity,
@@ -11,6 +10,8 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
+import AuthService from '../services/authService';
+import { ScreenContainer } from '../components/ScreenContainer';
 
 const { width } = Dimensions.get('window');
 
@@ -56,29 +57,27 @@ const Onboarding = () => {
     });
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isLastStep) {
+      await AuthService.setOnboardingComplete(true);
       navigation.navigate('AuthScreen');
     } else {
       animateToStep(currentStep + 1);
     }
   };
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
+    await AuthService.setOnboardingComplete(true);
     navigation.navigate('AuthScreen');
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Skip button – hidden on last step */}
+    <ScreenContainer style={styles.container}>
+      {/* Skip button on every screen */}
       <View style={styles.header}>
-        {!isLastStep ? (
-          <TouchableOpacity onPress={handleSkip}>
-            <Text style={styles.skipText}>Skip</Text>
-          </TouchableOpacity>
-        ) : (
-          <View />
-        )}
+        <TouchableOpacity onPress={handleSkip}>
+          <Text style={[styles.skipText, { color: theme.primary }]}>Skip</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Animated content area */}
@@ -122,7 +121,7 @@ const Onboarding = () => {
           {isLastStep ? 'Get Started' : 'Next'}
         </Text>
       </TouchableOpacity>
-    </SafeAreaView>
+    </ScreenContainer>
   );
 };
 
@@ -156,7 +155,6 @@ const styles = StyleSheet.create({
     width: 150,
     height: 150,
     resizeMode: 'contain',
-    tintColor: '#298cff',
     marginBottom: 30,
   },
   title: {

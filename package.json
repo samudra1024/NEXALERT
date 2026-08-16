@@ -1,5 +1,5 @@
 {
-  "name": "frontend",
+  "name": "nexalert",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -14,7 +14,6 @@
     "@react-native/new-app-screen": "0.81.0",
     "@react-navigation/native": "^6.1.17",
     "@react-navigation/stack": "^6.4.1",
-    "AsyncStorage": "^0.1.5",
     "axios": "^1.11.0",
     "lucide-react-native": "^0.563.0",
     "react": "19.1.0",
@@ -25,7 +24,8 @@
     "react-native-reanimated": "^3.6.1",
     "react-native-safe-area-context": "^5.6.1",
     "react-native-screens": "^4.13.0",
-    "react-native-svg": "^15.15.3"
+    "react-native-svg": "^15.15.3",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

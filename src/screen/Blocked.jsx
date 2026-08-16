@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  StatusBar,
   ActivityIndicator,
   Alert,
 } from 'react-native';
@@ -13,6 +12,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '../context/ThemeContext';
 import SmsController from '../../Controller/SmsController';
+import { ScreenContainer } from '../components/ScreenContainer';
 
 export default function Blocked() {
   const { theme } = useTheme();
@@ -52,8 +52,11 @@ export default function Blocked() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
+    <ScreenContainer
+      backgroundColor={theme.background}
+      statusBarStyle={theme.statusBar}
+      statusBarBackgroundColor={theme.statusBg}
+    >
       <View style={[styles.header, { borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={theme.text} />
@@ -93,7 +96,7 @@ export default function Blocked() {
           )}
         />
       )}
-    </View>
+    </ScreenContainer>
   );
 }
 

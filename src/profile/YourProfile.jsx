@@ -6,7 +6,6 @@ import {
     TouchableOpacity,
     Image,
     Alert,
-    StatusBar,
     TextInput,
     ScrollView,
     Platform,
@@ -16,6 +15,10 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import AuthService from '../services/authService';
+import useAppStore from '../store/useAppStore';
+import { formatPhoneNumber } from '../utils/contactUtils';
+import { ScreenContainer } from '../components/ScreenContainer';
 import { ArrowLeft, Camera, Edit2, Check } from 'lucide-react-native';
 
 const PROFILE_IMAGE_KEY = 'user_profile_image';
@@ -24,22 +27,26 @@ const PROFILE_NAME_KEY = 'user_display_name';
 export default function YourProfile() {
     const { theme } = useTheme();
     const navigation = useNavigation();
+    const userPhone = useAppStore(state => state.userPhone);
     const [profileImage, setProfileImage] = useState(null);
     const [displayName, setDisplayName] = useState('User');
+    const [phoneNumber, setPhoneNumber] = useState('');
     const [isEditingName, setIsEditingName] = useState(false);
     const [tempName, setTempName] = useState('');
 
     // Load saved profile data on mount
     useEffect(() => {
         loadProfileData();
-    }, []);
+    }, [userPhone]);
 
     const loadProfileData = async () => {
         try {
             const savedImage = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
             const savedName = await AsyncStorage.getItem(PROFILE_NAME_KEY);
+            const authPhone = userPhone || await AuthService.getUserPhone();
             if (savedImage) setProfileImage(savedImage);
             if (savedName) setDisplayName(savedName);
+            if (authPhone) setPhoneNumber(formatPhoneNumber(authPhone));
         } catch (e) {
             console.error('Error loading profile data:', e);
         }
@@ -140,9 +147,11 @@ export default function YourProfile() {
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+        <ScreenContainer
+            backgroundColor={theme.background}
+            statusBarStyle={theme.statusBar}
+            statusBarBackgroundColor={theme.statusBg}
+        >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -244,12 +253,14 @@ export default function YourProfile() {
                     {/* Phone Number - Read Only */}
                     <View style={[styles.infoItem, { backgroundColor: theme.surface }]}>
                         <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone Number</Text>
-                        <Text style={[styles.infoValue, { color: theme.text }]}>+1 234 567 8900</Text>
+                        <Text style={[styles.infoValue, { color: theme.text }]}>
+                            {phoneNumber || 'Not available'}
+                        </Text>
                     </View>
                 </Animated.View>
 
             </ScrollView>
-        </View>
+        </ScreenContainer>
     );
 }
 

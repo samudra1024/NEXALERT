@@ -3,12 +3,10 @@ import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from "
 import {
   View,
   Text,
-  FlatList,
   TextInput,
   TouchableOpacity,
   Alert,
   StyleSheet,
-  StatusBar,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
@@ -19,13 +17,18 @@ import {
   Clipboard,
   Share,
 } from "react-native";
+import OptimizedList from '../components/OptimizedList';
 import {
   TouchableWithoutFeedback
 } from 'react-native-gesture-handler';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import SmsController from '../../Controller/SmsController';
 import { useTheme } from '../context/ThemeContext';
 import ScalePressable from '../components/animations/ScalePressable';
+import { MessageSkeleton } from '../components/SkeletonLoader';
+import { ScreenContainer, useSafeAreaInsets } from '../components/ScreenContainer';
+import useSmsEvents from '../hooks/useSmsEvents';
+import { phonesMatch } from '../utils/contactUtils';
 import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Copy, Share2 } from 'lucide-react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 
@@ -122,6 +125,7 @@ const MessageBubble = memo(function MessageBubble({
 
 export default function ChatScreen() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute();
   const { contactId, name, initialBody } = route.params || {};
@@ -139,6 +143,8 @@ export default function ChatScreen() {
   const flatListRef = useRef(null);
   const messagesLoaded = useRef(false);
   const loadingMoreRef = useRef(false);
+  const loadOlderGateRef = useRef(false);
+  const pageRef = useRef(1);
   const hasScrolledToBottom = useRef(false);
   const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
@@ -151,6 +157,7 @@ export default function ChatScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
 
   const loadSmsMessages = useCallback(async (refresh = false, nextPage = 1) => {
@@ -165,8 +172,11 @@ export default function ChatScreen() {
     if (!refresh && nextPage === 1 && chatCache[contactId]) {
       setMessages(chatCache[contactId].messages);
       setHasMore(chatCache[contactId].hasMore ?? true);
-      setPage(chatCache[contactId].page ?? 1);
+      const cachedPage = chatCache[contactId].page ?? 1;
+      setPage(cachedPage);
+      pageRef.current = cachedPage;
       messagesLoaded.current = true;
+      setInitialLoading(false);
       return;
     }
 
@@ -198,7 +208,11 @@ export default function ChatScreen() {
         setMessages(prev => {
           const existingIds = new Set(prev.map(m => m.id));
           const olderMessages = processedNew.filter(m => !existingIds.has(m.id));
-          const merged = olderMessages.length > 0 ? [...olderMessages, ...prev] : prev;
+          if (olderMessages.length === 0) {
+            setHasMore(false);
+            return prev;
+          }
+          const merged = [...olderMessages, ...prev];
           chatCache[contactId] = {
             messages: merged,
             hasMore: result.hasMore,
@@ -210,6 +224,7 @@ export default function ChatScreen() {
 
       setHasMore(result.hasMore);
       setPage(result.page);
+      pageRef.current = result.page;
     } catch (error) {
       console.error(error);
       if (nextPage === 1) {
@@ -218,6 +233,7 @@ export default function ChatScreen() {
     } finally {
       loadingMoreRef.current = false;
       setLoadingMore(false);
+      if (nextPage === 1) setInitialLoading(false);
     }
   }, [contactId]);
 
@@ -226,9 +242,11 @@ export default function ChatScreen() {
     hasScrolledToBottom.current = false;
     setMessages([]);
     setPage(1);
+    pageRef.current = 1;
     setHasMore(true);
     setSelectedMessages([]);
     setInput(initialBody || '');
+    setInitialLoading(true);
 
     SmsController.getDraft(contactId).then(draft => {
       if (draft && !initialBody) {
@@ -237,20 +255,39 @@ export default function ChatScreen() {
     });
   }, [contactId, initialBody]);
 
-  useEffect(() => {
-    if (messagesLoaded.current) return;
+  const handleIncomingSms = useCallback((smsData) => {
+    if (!contactId || !smsData?.sender) {
+      return;
+    }
 
-    const task = InteractionManager.runAfterInteractions(() => {
-      loadSmsMessages();
-      if (contactId) {
-        SmsController.markAsRead(contactId).catch(error => {
-          console.error('Error marking as read:', error);
-        });
-      }
-    });
+    if (!phonesMatch(smsData.sender, contactId)) {
+      return;
+    }
 
-    return () => task.cancel();
-  }, [loadSmsMessages, contactId]);
+    delete chatCache[contactId];
+    messagesLoaded.current = false;
+    hasScrolledToBottom.current = false;
+    loadSmsMessages(true, 1);
+  }, [contactId, loadSmsMessages]);
+
+  useSmsEvents(handleIncomingSms);
+
+  useFocusEffect(
+    useCallback(() => {
+      hasScrolledToBottom.current = false;
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadSmsMessages(false, 1);
+        if (contactId) {
+          SmsController.markAsRead(contactId).catch(error => {
+            console.error('Error marking as read:', error);
+          });
+        }
+      });
+
+      return () => task.cancel();
+    }, [contactId, loadSmsMessages]),
+  );
 
   const handleSelectMessage = useCallback((messageId) => {
     setSelectedMessages(prev => {
@@ -485,12 +522,18 @@ export default function ChatScreen() {
   ), [messages, theme, selectedMessageSet, handleLongPress, handleMessagePress]);
 
   const handleLoadOlder = useCallback(() => {
-    if (hasMore && !loadingMoreRef.current) {
-      loadSmsMessages(false, page + 1);
+    if (!hasMore || loadingMoreRef.current || loadOlderGateRef.current) {
+      return;
     }
-  }, [hasMore, page, loadSmsMessages]);
+    loadOlderGateRef.current = true;
+    loadSmsMessages(false, pageRef.current + 1).finally(() => {
+      setTimeout(() => {
+        loadOlderGateRef.current = false;
+      }, 400);
+    });
+  }, [hasMore, loadSmsMessages]);
 
-  const msgKeyExtractor = useCallback((item) => item.id, []);
+  const msgKeyExtractor = useCallback((item) => String(item.id), []);
 
   const scrollToBottom = useCallback(() => {
     if (flatListRef.current && messages.length > 0) {
@@ -499,7 +542,7 @@ export default function ChatScreen() {
   }, [messages.length]);
 
   const handleScroll = useCallback(({ nativeEvent }) => {
-    if (nativeEvent.contentOffset.y <= 48) {
+    if (nativeEvent.contentOffset.y <= 64) {
       handleLoadOlder();
     }
   }, [handleLoadOlder]);
@@ -528,19 +571,24 @@ export default function ChatScreen() {
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, []);
+  }, [scrollToBottom]);
+
+  const androidKeyboardOffset = Platform.OS === 'android' ? keyboardHeight : 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.surface }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
+    <ScreenContainer
+      backgroundColor={theme.surface}
+      statusBarStyle={theme.statusBar}
+      statusBarBackgroundColor={theme.statusBg}
+      edges={['top', 'left', 'right']}
+    >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         enabled={Platform.OS === 'ios'}
       >
-
-        {/* Enhanced Header */}
+        <View style={styles.chatBody}>
         <View style={[styles.header, { backgroundColor: isSelectionMode ? theme.surface : theme.background, borderBottomColor: theme.border }]}>
           {isSelectionMode ? (
             <>
@@ -610,33 +658,42 @@ export default function ChatScreen() {
           {/* End of Conditional Header Content */}
         </View>
 
-        <FlatList
+        {initialLoading && messages.length === 0 ? (
+          <MessageSkeleton theme={theme} />
+        ) : (
+        <OptimizedList
           ref={flatListRef}
           data={filteredMessages}
           keyExtractor={msgKeyExtractor}
           renderItem={renderMessage}
           extraData={selectedMessageSet}
+          estimatedItemSize={72}
+          initialNumToRender={20}
+          windowSize={11}
           style={styles.messagesList}
           contentContainerStyle={styles.messagesContainer}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={12}
-          windowSize={9}
-          initialNumToRender={15}
-          updateCellsBatchingPeriod={100}
           onScroll={handleScroll}
-          scrollEventThrottle={200}
+          scrollEventThrottle={16}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 80,
+          }}
           ListHeaderComponent={
             loadingMore ? (
               <ActivityIndicator size="small" color={theme.primary} style={{ marginVertical: 12 }} />
             ) : null
           }
         />
+        )}
 
         <View style={[
           styles.inputContainer,
-          { backgroundColor: theme.background, borderTopColor: theme.border },
-          Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }
+          {
+            backgroundColor: theme.background,
+            borderTopColor: theme.border,
+            paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 12) + androidKeyboardOffset,
+          },
         ]}>
           {editingMessage && (
             <View style={[styles.editingBanner, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
@@ -730,8 +787,9 @@ export default function ChatScreen() {
           </TouchableWithoutFeedback>
         </Modal>
 
+        </View>
       </KeyboardAvoidingView>
-    </View>
+    </ScreenContainer>
   );
 }
 
@@ -741,6 +799,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   keyboardContainer: {
+    flex: 1,
+  },
+  chatBody: {
     flex: 1,
   },
   header: {
@@ -902,7 +963,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 12,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },

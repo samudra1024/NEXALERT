@@ -5,26 +5,49 @@ import {
     StyleSheet,
     TouchableOpacity,
     Switch,
-    StatusBar,
     ScrollView,
     Modal,
+    Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Animated, { ZoomIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
-import { ArrowLeft, ChevronRight, HelpCircle, Info, FileText, Shield } from 'lucide-react-native';
+import useAppStore from '../store/useAppStore';
+import AuthService from '../services/authService';
+import { ScreenContainer } from '../components/ScreenContainer';
+import { ArrowLeft, ChevronRight, HelpCircle, Info, FileText, Shield, LogOut } from 'lucide-react-native';
 
 export default function Settings() {
     const { theme } = useTheme();
     const { settings, updateSettings } = useSettings();
     const navigation = useNavigation();
+    const logout = useAppStore(state => state.logout);
     const [modalVisible, setModalVisible] = useState(false);
     const [modalContent, setModalContent] = useState({ title: '', body: '' });
 
     const showModal = (title, body) => {
         setModalContent({ title, body });
         setModalVisible(true);
+    };
+
+    const handleLogout = () => {
+        Alert.alert(
+            'Sign out?',
+            'You will need to verify your phone number again to sign back in.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Sign Out',
+                    style: 'destructive',
+                    onPress: async () => {
+                        await logout();
+                        await AuthService.setOnboardingComplete(true);
+                        navigation.reset({ index: 0, routes: [{ name: 'AuthScreen' }] });
+                    },
+                },
+            ],
+        );
     };
 
     const SettingToggle = ({ label, value, onToggle }) => (
@@ -53,9 +76,11 @@ export default function Settings() {
     );
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+        <ScreenContainer
+            backgroundColor={theme.background}
+            statusBarStyle={theme.statusBar}
+            statusBarBackgroundColor={theme.statusBg}
+        >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -153,6 +178,17 @@ export default function Settings() {
                     />
                 </View>
 
+                {/* Account */}
+                <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>Account</Text>
+                <View style={styles.sectionContainer}>
+                    <SettingLink
+                        label="Sign Out"
+                        icon={<LogOut size={20} color={theme.danger || '#ef4444'} />}
+                        color={theme.danger || '#ef4444'}
+                        onPress={handleLogout}
+                    />
+                </View>
+
             </ScrollView>
 
             {/* Detail Modal */}
@@ -180,7 +216,7 @@ export default function Settings() {
                     </Animated.View>
                 </View>
             </Modal>
-        </View>
+        </ScreenContainer>
     );
 }
 

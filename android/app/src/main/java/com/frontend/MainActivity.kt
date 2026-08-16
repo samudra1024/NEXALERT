@@ -1,6 +1,7 @@
 package com.frontend
 
 import android.content.Intent
+import android.os.Bundle
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -16,7 +17,12 @@ class MainActivity : ReactActivity() {
 
   private external fun stringFromNative(): String
 
-  override fun getMainComponentName(): String = "frontend"
+  override fun getMainComponentName(): String = "NexAlert"
+
+  override fun onCreate(savedInstanceState: Bundle?) {
+    setTheme(R.style.AppTheme)
+    super.onCreate(savedInstanceState)
+  }
 
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
