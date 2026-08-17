@@ -21,10 +21,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from ml.model.config import ARTIFACTS_DIR
+from ml.model.config import ARTIFACTS_DIR, HAM_CATEGORIES
 from ml.model.preprocess import preprocess_text
 from ml.model.stage2.train import load_stage2_pipeline
 from ml.model.utils import load_model
+
+FROZEN_STAGE2_CATEGORIES = list(HAM_CATEGORIES)
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,7 @@ class TestCase:
     group: str
     message: str
     expected_stage1: str  # "HAM" or "SPAM"
-    expected_stage2: Optional[str]  # personal | otp | banking | None for spam
+    expected_stage2: Optional[str]  # personal | otp | banking | subscription | recharge_data | None for spam
     manual_review: bool = False
 
 
@@ -191,6 +193,79 @@ TEST_CASES: list[TestCase] = [
         "SPAM",
         None,
     ),
+    # GROUP 7 — SUBSCRIPTION
+    TestCase(
+        27,
+        "GROUP 7 — SUBSCRIPTION",
+        "Your Spotify Premium membership has been renewed for Rs 119/month.",
+        "HAM",
+        "subscription",
+    ),
+    TestCase(
+        28,
+        "GROUP 7 — SUBSCRIPTION",
+        "Netflix subscription trial ends in 3 days. Renew to continue access.",
+        "HAM",
+        "subscription",
+    ),
+    TestCase(
+        29,
+        "GROUP 7 — SUBSCRIPTION",
+        "Prime Video annual membership activated. Valid till 12-Jan-2027.",
+        "HAM",
+        "subscription",
+    ),
+    TestCase(
+        30,
+        "GROUP 7 — SUBSCRIPTION",
+        "Your Zomato Gold membership renewal of Rs 30 is successful.",
+        "HAM",
+        "subscription",
+    ),
+    # GROUP 8 — RECHARGE / DATA
+    TestCase(
+        31,
+        "GROUP 8 — RECHARGE / DATA",
+        "Vi: Rs 299 recharge successful. 1.5GB/day + unlimited calls for 28 days.",
+        "HAM",
+        "recharge_data",
+    ),
+    TestCase(
+        32,
+        "GROUP 8 — RECHARGE / DATA",
+        "BSNL: your prepaid balance is Rs 45. Recharge to avoid service interruption.",
+        "HAM",
+        "recharge_data",
+    ),
+    TestCase(
+        33,
+        "GROUP 8 — RECHARGE / DATA",
+        "Airtel Thanks: 2GB data booster added. Valid for 24 hours.",
+        "HAM",
+        "recharge_data",
+    ),
+    TestCase(
+        34,
+        "GROUP 8 — RECHARGE / DATA",
+        "Jio: plan validity extended till 05-Sep-2026 after Rs 666 recharge.",
+        "HAM",
+        "recharge_data",
+    ),
+    # GROUP 9 — SUBSCRIPTION / RECHARGE BOUNDARY
+    TestCase(
+        35,
+        "GROUP 9 — SUBSCRIPTION / RECHARGE BOUNDARY",
+        "Your monthly JioPostPaid plan bill of Rs 599 is due on 20-Aug.",
+        "HAM",
+        "subscription",
+    ),
+    TestCase(
+        36,
+        "GROUP 9 — SUBSCRIPTION / RECHARGE BOUNDARY",
+        "Prepaid pack Rs 155 activated on 9876543210. Data benefit starts now.",
+        "HAM",
+        "recharge_data",
+    ),
 ]
 
 
@@ -328,9 +403,17 @@ def main() -> int:
 
     stage1_model, stage1_vectorizer, stage1_threshold = load_stage1_artifacts()
     stage2_pipeline = load_stage2_model()
+    loaded_stage2_classes = list(stage2_pipeline.named_steps["classifier"].classes_)
 
     print(f"Loaded Stage 1 threshold: {stage1_threshold:.3f}")
-    print(f"Loaded Stage 2 classes: {list(stage2_pipeline.named_steps['classifier'].classes_)}")
+    print(f"Loaded Stage 2 classes: {loaded_stage2_classes}")
+    print(f"Frozen Stage 2 categories: {FROZEN_STAGE2_CATEGORIES}")
+
+    five_category_mapping_pass = set(loaded_stage2_classes) == set(FROZEN_STAGE2_CATEGORIES)
+    print(
+        "Five-category mapping: "
+        + ("PASS" if five_category_mapping_pass else "FAIL")
+    )
     print()
 
     results: list[dict] = []
@@ -444,12 +527,27 @@ def main() -> int:
     print()
     print(f"Stage 2 incorrectly called for SPAM: {'YES' if stage2_called_for_spam else 'NO'}")
     print()
+    stage1_pass = failures == 0 and not stage2_called_for_spam and stage1_incorrect == 0
+    stage2_pass = failures == 0 and stage2_incorrect == 0 and not stage2_called_for_spam
+    print(f"Stage 1 sanity check: {'PASS' if stage1_pass else 'FAIL'}")
+    print(f"Stage 2 sanity check: {'PASS' if stage2_pass else 'FAIL'}")
+    print(
+        "Five-category mapping: "
+        + ("PASS" if five_category_mapping_pass else "FAIL")
+    )
+    print()
     print("Test | Expected | Actual | Status")
     print("-" * 70)
     for row in results:
         print(f"{row['number']} | {row['expected']} | {row['actual']} | {row['status']}")
 
-    return 1 if failures > 0 or stage2_called_for_spam else 0
+    return (
+        1
+        if failures > 0
+        or stage2_called_for_spam
+        or not five_category_mapping_pass
+        else 0
+    )
 
 
 if __name__ == "__main__":

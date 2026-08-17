@@ -5,6 +5,8 @@ This module trains a multi-class classifier to categorize HAM messages into:
 - personal
 - otp
 - banking
+- subscription
+- recharge_data
 
 IMPORTANT: This model works independently from Stage 1 (Spam Detection).
 It only processes messages that are already known to be HAM.
@@ -29,6 +31,7 @@ from ml.model.config import (
     RANDOM_SEED,
     STAGE2_TFIDF_CONFIG,
     STAGE2_LGBM_CONFIG,
+    STAGE2_CLASS_WEIGHTS,
     HAM_CATEGORIES,
 )
 from ml.model.preprocess import preprocess_text
@@ -122,6 +125,14 @@ def load_ham_dataset(dataset_path: str = None) -> pd.DataFrame:
     return ham_df
 
 
+def _resolve_lgbm_feature_names(classifier: lgb.LGBMClassifier):
+    """Return the feature names sklearn/LightGBM expect at inference time."""
+    feature_names = getattr(classifier, "feature_names_in_", None)
+    if feature_names is not None and len(feature_names) > 0:
+        return list(feature_names)
+    return getattr(classifier, "feature_name_", None)
+
+
 def _attach_lgbm_feature_names(X, feature_names):
     """
     Attach column names to sparse TF-IDF output for LGBMClassifier.predict*.
@@ -141,20 +152,26 @@ def _attach_lgbm_feature_names(X, feature_names):
     return pd.DataFrame(X, columns=columns)
 
 
+def _lgbm_sparse_patch_is_active(classifier: lgb.LGBMClassifier) -> bool:
+    """True only when our wrapped predict/predict_proba are actually installed."""
+    predict_func = getattr(classifier.predict, "__func__", None)
+    return predict_func is not None and predict_func.__module__ == __name__
+
+
 def _patch_lgbm_classifier_for_sparse_input(classifier: lgb.LGBMClassifier) -> lgb.LGBMClassifier:
     """Wrap predict/predict_proba so sparse Pipeline inputs carry feature names."""
-    if getattr(classifier, "_lgbm_sparse_input_patched", False):
+    if _lgbm_sparse_patch_is_active(classifier):
         return classifier
 
     orig_predict = classifier.predict
     orig_predict_proba = classifier.predict_proba
 
     def predict(self, X, *args, **kwargs):
-        X = _attach_lgbm_feature_names(X, getattr(self, "feature_name_", None))
+        X = _attach_lgbm_feature_names(X, _resolve_lgbm_feature_names(self))
         return orig_predict(X, *args, **kwargs)
 
     def predict_proba(self, X, *args, **kwargs):
-        X = _attach_lgbm_feature_names(X, getattr(self, "feature_name_", None))
+        X = _attach_lgbm_feature_names(X, _resolve_lgbm_feature_names(self))
         return orig_predict_proba(X, *args, **kwargs)
 
     classifier.predict = types.MethodType(predict, classifier)
@@ -259,9 +276,11 @@ def train_stage2_model():
     logger.info("=" * 70)
     
     pipeline = create_stage2_pipeline()
-    
+
+    sample_weights = np.array([STAGE2_CLASS_WEIGHTS[label] for label in y_train])
+    logger.info(f"\nApplying configured class weights: {STAGE2_CLASS_WEIGHTS}")
     logger.info("\nTraining pipeline on HAM messages...")
-    pipeline.fit(X_train, y_train)
+    pipeline.fit(X_train, y_train, classifier__sample_weight=sample_weights)
     logger.info("✓ Model training complete")
     
     # ==========================================================================

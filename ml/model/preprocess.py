@@ -109,17 +109,26 @@ def load_data(dataset_path: str = None) -> pd.DataFrame:
     
     if dropped_rows > 0:
         logger.warning(f"Dropped {dropped_rows} rows with missing values")
-
-    # Remove exact duplicate SMS text to prevent train/test leakage
-    before_dedup = len(df)
-    df = df.drop_duplicates(subset=['text'], keep='first')
-    deduped_rows = before_dedup - len(df)
-    if deduped_rows > 0:
-        logger.warning(f"Removed {deduped_rows} exact duplicate SMS texts before splitting")
     
     logger.info(f"Loaded {len(df)} samples")
     logger.info(f"Label distribution:\n{df['label'].value_counts()}")
     
+    return df
+
+
+def deduplicate_preprocessed_text(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove duplicate preprocessed SMS text to prevent train/test leakage.
+
+    Call after preprocess_text() so dedup matches the training representation.
+    """
+    before_dedup = len(df)
+    df = df.drop_duplicates(subset=['text'], keep='first')
+    deduped_rows = before_dedup - len(df)
+    if deduped_rows > 0:
+        logger.warning(
+            f"Removed {deduped_rows} duplicate preprocessed SMS texts before splitting"
+        )
     return df
 
 
@@ -227,9 +236,10 @@ def prepare_data(random_state: int = RANDOM_SEED) -> tuple:
     # Load data
     df = load_data()
     
-    # Preprocess text
+    # Preprocess text, then deduplicate the normalized representation used for training
     logger.info("Preprocessing text (minimal cleaning)...")
     df['text'] = df['text'].apply(preprocess_text)
+    df = deduplicate_preprocessed_text(df)
     
     # Encode labels
     df = encode_labels(df)

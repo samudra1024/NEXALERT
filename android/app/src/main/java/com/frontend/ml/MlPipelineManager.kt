@@ -556,9 +556,9 @@ class MlPipelineManager private constructor(private val context: Context) {
          */
         private val MONETARY_AMOUNT_PATTERN =
             Regex("""(?:rs\.?|inr|₹)\s*[\d,]+(?:\.\d+)?""", RegexOption.IGNORE_CASE)
-        /** Training label order (ml/model/config.py HAM_CATEGORIES) — for diagnostic index display only. */
+        /** Label order (ml/model/config.py HAM_CATEGORIES) — diagnostic index display only. */
         private val STAGE2_INDEX_TO_LABEL = arrayOf(
-            "personal", "otp", "banking"
+            "personal", "otp", "banking", "subscription", "recharge_data"
         )
         private val modelDebugInfoLogged = AtomicBoolean(false)
 
@@ -589,7 +589,10 @@ class MlPipelineManager private constructor(private val context: Context) {
         android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 INPUT: tensor(string), shape=[batch]")
         android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 OUTPUT: output_label tensor(string); output_probability seq(map(string,float))")
         android.util.Log.d(MODEL_DEBUG_TAG, "STAGE1 THRESHOLD: $spamThreshold (spam if P(spam) >= threshold)")
-        android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 OUTPUT SHAPE: output_label=[1]; output_probability=seq(map) with 3 string keys")
+        android.util.Log.d(
+            MODEL_DEBUG_TAG,
+            "STAGE2 OUTPUT SHAPE: output_label=[1]; output_probability=seq(map) with ${STAGE2_INDEX_TO_LABEL.size} string keys"
+        )
         STAGE2_INDEX_TO_LABEL.forEachIndexed { index, label ->
             android.util.Log.d(MODEL_DEBUG_TAG, "STAGE2 LABEL MAPPING: $index -> $label")
         }

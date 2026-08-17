@@ -21,11 +21,13 @@ def load_spam_threshold() -> float:
 
 SPAM_THRESHOLD = load_spam_threshold()
 
+# "All" is UI-only (all HAM); not an ML label.
 ML_TAB_FILTERS = {
-    "All": None,
     "Personal": "personal",
-    "Banking": "banking",
     "OTP": "otp",
+    "Banking": "banking",
+    "Subscription": "subscription",
+    "Recharge": "recharge_data",
 }
 
 SAMPLES = [
@@ -65,10 +67,14 @@ for sms, expected_tab in SAMPLES:
         category = str(label2[0])
         stage2_label = category
 
-    frontend_tab = next(
-        (tab for tab, ml in ML_TAB_FILTERS.items() if ml == category),
-        "All only" if category == "unknown" and not is_spam else ("hidden/spam" if is_spam else "no tab match"),
-    )
+    if is_spam:
+        frontend_tab = "Spam"
+    elif category == "unknown" or category not in ML_TAB_FILTERS.values():
+        frontend_tab = "All"
+    else:
+        frontend_tab = next(
+            tab for tab, ml in ML_TAB_FILTERS.items() if ml == category
+        )
 
     row = {
         "sms": sms[:60],

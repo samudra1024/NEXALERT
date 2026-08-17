@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Inbox backfill: classifies existing SMS in content://sms that lack metadata or have
- * stale rows (e.g. category unknown on HAM, obsolete subscription/promotional labels).
+ * stale rows (e.g. category unknown on HAM, obsolete pre-v2 category labels).
  */
 object InitialSmsClassifier {
 

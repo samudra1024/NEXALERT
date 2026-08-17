@@ -35,19 +35,24 @@ const getAvatarColor = (address) => {
   return colors[index];
 };
 
-// Tab display label → ML category value (matches ml/model/config.py HAM_CATEGORIES)
-const CATEGORY_TABS = ['All', 'Personal', 'OTP', 'Banking', 'Spam'];
+// "All" is UI-only (all HAM). Other tabs map to ml/model/config.py HAM_CATEGORIES.
+const CATEGORY_TABS = ['All', 'Personal', 'OTP', 'Banking', 'Subscription', 'Recharge', 'Spam'];
 
 const ML_TAB_FILTERS = {
   Personal: 'personal',
   OTP: 'otp',
   Banking: 'banking',
+  Subscription: 'subscription',
+  Recharge: 'recharge_data',
 };
 
 const EMPTY_STATE_MESSAGES = {
+  All: 'No messages',
   Personal: 'No personal messages',
   OTP: 'No OTP messages',
   Banking: 'No banking messages',
+  Subscription: 'No subscription messages',
+  Recharge: 'No recharge messages',
   Spam: 'No spam messages',
 };
 
@@ -201,6 +206,9 @@ export default function ChatsList() {
     // Category Filter — match ML metadata on latest message per conversation
     if (selectedCategory === 'Spam') {
       result = result.filter(c => c.is_spam === true);
+    } else if (selectedCategory === 'All') {
+      // UI-only: every HAM conversation, including category "unknown"
+      result = result.filter(c => c.is_spam !== true);
     } else if (ML_TAB_FILTERS[selectedCategory]) {
       const mlCategory = ML_TAB_FILTERS[selectedCategory];
       result = result.filter(c => c.is_spam !== true && c.category === mlCategory);

@@ -113,7 +113,7 @@ STAGE2_TFIDF_CONFIG = {
 # LightGBM Classifier for Stage 2
 STAGE2_LGBM_CONFIG = {
     'objective': 'multiclass',   # Multi-class classification
-    'num_class': 3,              # personal, otp, banking
+    'num_class': 5,              # personal, otp, banking, subscription, recharge_data
     'n_estimators': 300,         # Number of boosting rounds
     'learning_rate': 0.05,       # Step size shrinkage
     'num_leaves': 31,            # Max tree leaves
@@ -125,10 +125,12 @@ STAGE2_CLASS_WEIGHTS = {
     'personal': 1.0,
     'banking': 1.5,
     'otp': 2.0,
+    'subscription': 1.5,
+    'recharge_data': 1.5,
 }
 
-# HAM categories list
-HAM_CATEGORIES = ['personal', 'otp', 'banking']
+# HAM categories list (Stage 2 only; "all" is a UI filter, not an ML label)
+HAM_CATEGORIES = ['personal', 'otp', 'banking', 'subscription', 'recharge_data']
 
 # =============================================================================
 # LOGGING CONFIGURATION

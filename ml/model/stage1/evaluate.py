@@ -7,7 +7,13 @@ import logging
 import numpy as np
 
 from ml.model.config import DATASET_PATH, ARTIFACTS_DIR, TRAIN_SIZE, VAL_SIZE, TEST_SIZE, RANDOM_SEED
-from ml.model.preprocess import prepare_data, load_data, preprocess_text, encode_labels
+from ml.model.preprocess import (
+    prepare_data,
+    load_data,
+    preprocess_text,
+    encode_labels,
+    deduplicate_preprocessed_text,
+)
 from ml.model.utils import (
     load_model,
     save_metrics,
@@ -49,9 +55,10 @@ def evaluate_on_test_set() -> dict:
     # Load full dataset
     df = load_data()
     
-    # Preprocess text
+    # Preprocess text (same order as training: preprocess -> dedup -> split)
     logger.info("Preprocessing text...")
     df['text'] = df['text'].apply(preprocess_text)
+    df = deduplicate_preprocessed_text(df)
     
     # Encode labels
     df = encode_labels(df)

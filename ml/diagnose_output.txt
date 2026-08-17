@@ -1,0 +1,566 @@
+﻿python : 2026-08-17 00:35:31,305 - ml.model.preprocess - INFO - Loading dataset from 
+C:\Users\xxtri\Desktop\NexAlert\ml\data\dataset.csv
+At C:\Users\xxtri\AppData\Local\Temp\ps-script-b03b52a5-4c45-49bb-9312-12498d117518.ps1:99 char:70
++ ... ktop\NexAlert"; python ml/diagnose_subscription_audit.py 2>&1 | Out-F ...
++                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (2026-08-17 00:3...ata\dataset.csv:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-08-17 00:35:31,316 - ml.model.preprocess - INFO - Dataset loaded with UTF-8 encoding
+2026-08-17 00:35:31,318 - ml.model.preprocess - INFO - Loaded 11211 samples
+2026-08-17 00:35:31,319 - ml.model.preprocess - INFO - Label distribution:
+label
+ham     8959
+spam    2252
+Name: count, dtype: int64
+2026-08-17 00:35:31,319 - ml.model.preprocess - INFO - ============================================================
+2026-08-17 00:35:31,319 - ml.model.preprocess - INFO - DATA PREPARATION PIPELINE
+2026-08-17 00:35:31,319 - ml.model.preprocess - INFO - ============================================================
+2026-08-17 00:35:31,319 - ml.model.preprocess - INFO - Loading dataset from 
+C:\Users\xxtri\Desktop\NexAlert\ml\data\dataset.csv
+2026-08-17 00:35:31,333 - ml.model.preprocess - INFO - Dataset loaded with UTF-8 encoding
+2026-08-17 00:35:31,334 - ml.model.preprocess - INFO - Loaded 11211 samples
+2026-08-17 00:35:31,335 - ml.model.preprocess - INFO - Label distribution:
+label
+ham     8959
+spam    2252
+Name: count, dtype: int64
+2026-08-17 00:35:31,335 - ml.model.preprocess - INFO - Preprocessing text (minimal cleaning)...
+2026-08-17 00:35:31,367 - ml.model.preprocess - WARNING - Removed 3 duplicate preprocessed SMS texts before splitting
+2026-08-17 00:35:31,370 - ml.model.preprocess - INFO - Encoded string labels to numeric (spam=1, ham=0)
+2026-08-17 00:35:31,370 - ml.model.preprocess - INFO - Splitting data into train/val/test (70/15/15)...
+2026-08-17 00:35:31,403 - ml.model.preprocess - INFO - Split complete:
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO -   Train: 7844 samples (70.0%)
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO -   Val:   1682 samples (15.0%)
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO -   Test:  1682 samples (15.0%)
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO -   Train spam ratio: 1576/7844 (20.1%)
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO -   Val spam ratio: 338/1682 (20.1%)
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO -   Test spam ratio: 338/1682 (20.1%)
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO - ============================================================
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO - DATA PREPARATION COMPLETE
+2026-08-17 00:35:31,404 - ml.model.preprocess - INFO - ============================================================
+2026-08-17 00:35:32,026 - ml.model.stage2.train - INFO - Loading dataset from 
+C:\Users\xxtri\Desktop\NexAlert\ml\data\dataset.csv
+2026-08-17 00:35:32,038 - ml.model.stage2.train - INFO - Dataset loaded with UTF-8 encoding
+2026-08-17 00:35:32,038 - ml.model.stage2.train - INFO - Loaded 11211 total messages
+2026-08-17 00:35:32,041 - ml.model.stage2.train - INFO - Filtered to 8959 HAM messages
+2026-08-17 00:35:32,065 - ml.model.stage2.train - INFO - HAM category distribution:
+category
+personal         5854
+otp              1012
+subscription      847
+banking           735
+recharge_data     511
+Name: count, dtype: int64
+2026-08-17 00:35:32,070 - ml.model.stage2.train - WARNING - Removed 3 exact duplicate HAM SMS texts before splitting
+======================================================================
+MODEL 1 - CATEGORY COLUMN HANDLING VERIFICATION
+======================================================================
+
+======================================================================
+TEST 1: DATASET STRUCTURE
+======================================================================
+
+Dataset columns: ['label', 'text', 'category']
+Total rows: 11211
+
+Column details:
+  ΓÇó label: object
+    Sample values: ['ham', 'ham', 'ham']
+  ΓÇó text: object
+    Sample values: ["hey aarav, are you free after <time>? let's meet near the metro station.", '. hi, . happy diwali. . in advance . .....:-):-pb-)', 'ananya, i reached the bus stop. let me know when you reach.']
+  ΓÇó category: object
+    Sample values: ['personal', 'personal', 'personal']
+
+======================================================================
+TEST 2: DATA LOADING
+======================================================================
+
+Loaded DataFrame columns: ['label', 'text', 'category']
+Γ£ô All columns preserved in DataFrame
+Γ£ô Model 1 will only use 'text' and 'label' columns
+
+======================================================================
+TEST 3: FEATURE EXTRACTION
+======================================================================
+
+Extracted features:
+  X_train shape: (7844,) (text messages)
+  X_val shape: (1682,) (text messages)
+  X_test shape: (1682,) (text messages)
+
+Extracted labels:
+  y_train shape: (7844,) (spam=1, ham=0)
+  y_val shape: (1682,) (spam=1, ham=0)
+  y_test shape: (1682,) (spam=1, ham=0)
+
+Γ£ô Category column NOT included in features
+Γ£ô Only 'text' used as input (X)
+Γ£ô Only 'label' used as target (y)
+
+Sample training data:
+  Text (X_train[0]): '<service> subscription has been activated successf...'
+  Label (y_train[0]): 0 (0=ham, 1=spam)
+
+======================================================================
+VERIFICATION SUMMARY
+======================================================================
+
+Γ£à ALL TESTS PASSED!
+
+Key Findings:
+  Γ£ô Dataset has 3 columns: text, label, category
+  Γ£ô Model 1 loads all columns but only uses text + label
+  Γ£ô Category column is preserved for Model 2
+  Γ£ô No errors occur during data loading or preprocessing
+  Γ£ô Pipeline remains fully functional
+
+Model 1 Data Flow:
+  Input: dataset.csv (3 columns)
+  Γåô
+  Extract: text ΓåÆ X, label ΓåÆ y
+  Γåô
+  Ignore: category column (preserved for Model 2)
+  Γåô
+  Output: Train/Val/Test arrays (text features + spam labels)
+
+======================================================================
+VERIFICATION COMPLETE
+======================================================================
+=== CLASS MAPPING ===
+HAM_CATEGORIES: ['personal', 'otp', 'banking', 'subscription', 'recharge_data']
+LightGBM classes_: ['banking', 'otp', 'personal', 'recharge_data', 'subscription']
+Set match: True
+  index 0: banking
+  index 1: otp
+  index 2: personal
+  index 3: recharge_data
+  index 4: subscription
+
+=== PREPROCESSING EXAMPLES ===
+--- personal ---
+RAW: Hey Priya, can you send the rent UPI screenshot tonight?
+PREPROCESSED: hey priya, can you send the rent upi screenshot tonight?
+TOP FEATURES: [('send the', 0.44644238731521324), ('you send', 0.4204632245276352), ('rent', 0.3965601542295779), ('can you', 0.3186735485160804), ('tonight', 0.3065069954954158), ('hey', 0.27820131796067565), ('send', 0.2592618793821527), ('upi', 0.22686701498350775), ('can', 0.19548884149506798), ('the', 0.13612126094504925), ('you', 0.13533042584861885)]
+--- otp ---
+RAW: Your OTP for login is 483921. Valid 10 minutes.
+PREPROCESSED: your otp for login is 483921. valid 10 minutes.
+TOP FEATURES: [('login is', 0.4255610068482649), ('for login', 0.4079131070862441), ('10', 0.40424084768332685), ('login', 0.2950629297049322), ('minutes', 0.2950629297049322), ('your otp', 0.28331348343448237), ('otp for', 0.27078666025791254), ('valid', 0.25307065722991184), ('otp', 0.18236141099230488), ('for', 0.1564341901867239), ('is', 0.14516146090810053), ('your', 0.13613928888472449)]
+--- banking ---
+RAW: Your account balance is Rs 4,500 after debit.
+PREPROCESSED: your account balance is <amount> after debit.
+TOP FEATURES: [('account balance', 0.4220822838482155), ('debit', 0.40457864578737684), ('balance is', 0.3829644228560906), ('balance', 0.3377724098246169), ('is amount', 0.33023654644484923), ('your account', 0.3137497853378636), ('after', 0.28447158286721735), ('account', 0.19187898062269848), ('amount', 0.1822445979663814), ('is', 0.1439748472272051), ('your', 0.13502642640946833)]
+--- subscription ---
+RAW: Your Spotify Premium membership has been renewed for Rs 119/month.
+PREPROCESSED: your spotify premium membership has been renewed for <amount>/month.
+TOP FEATURES: [('premium membership', 0.4106475670973092), ('membership has', 0.32430057148487396), ('been renewed', 0.31337216708276666), ('premium', 0.31337216708276666), ('renewed for', 0.30962780291040315), ('month', 0.29312296751965555), ('for amount', 0.26822608900009304), ('renewed', 0.26534643667731844), ('membership', 0.22858985174667693), ('has been', 0.191475280091802), ('been', 0.18246900762463142), ('has', 0.17762347189620312)]
+--- recharge_data ---
+RAW: Vi: Rs 299 recharge successful. 1.5GB/day for 28 days.
+PREPROCESSED: vi: <amount> recharge successful. 1.5gb/day for 28 days.
+TOP FEATURES: [('28', 0.39801960818383414), ('recharge successful', 0.384975802452463), ('day for', 0.35354778509490964), ('vi', 0.35354778509490964), ('amount recharge', 0.3056652534946418), ('days', 0.28662864147921946), ('5gb', 0.2817221244915158), ('successful', 0.2399446213715376), ('recharge', 0.2224953097698846), ('day', 0.21064790708659745), ('amount', 0.14641870089371306), ('for', 0.12465475791947607)]
+
+=== SUBSCRIPTION KEYWORD SURVIVAL AFTER PREPROCESS ===
+  "subscription" present: False
+  "membership" present: True
+  "renew" present: True
+  "premium" present: True
+  "trial" present: False
+  "cancel" present: False
+  "expire" present: False
+  "billing" present: False
+  "plan" present: False
+  "auto-renewal" present: False
+  "renewed" present: True
+  "renewal" present: False
+
+=== KEYWORD COUNTS IN PREPROCESSED HAM DATA ===
+
+subscription: n=847
+  subscription: 170 (20.1%)
+  membership: 186 (22.0%)
+  renew: 301 (35.5%)
+  premium: 32 (3.8%)
+  trial: 91 (10.7%)
+  cancel: 58 (6.8%)
+  expire: 45 (5.3%)
+  billing: 70 (8.3%)
+  plan: 210 (24.8%)
+
+personal: n=5854
+  subscription: 0 (0.0%)
+  membership: 0 (0.0%)
+  renew: 0 (0.0%)
+  premium: 0 (0.0%)
+  trial: 0 (0.0%)
+  cancel: 7 (0.1%)
+  expire: 1 (0.0%)
+  billing: 0 (0.0%)
+  plan: 80 (1.4%)
+
+=== TOP TOKENS (whitespace split) ===
+Subscription: [('<service>', 825), ('<date>.', 339), ('your', 334), ('for', 316), ('is', 221), ('the', 217), ('plan', 181), ('access', 179), ('membership', 176), ('renewal', 166), ('has', 139), ('subscription', 138), ('been', 123), ('account', 116), ('trial', 94)]
+Personal: [('i', 3001), ('to', 1958), ('you', 1785), ('the', 1410), ('u', 1376), ('a', 1348), ('in', 1134), ('and', 956), ('is', 932), ('my', 843), ('me', 784), ('of', 705), ('.', 657), ('it', 591), ('if', 584)]
+Shared in top25: ['for', 'is', 'on', 'the', 'to', 'your']
+
+=== TF-IDF MEAN DIFF (subscription - personal) ON TRAIN TEXTS ===
+Higher in subscription:
+  service: diff=0.15382, sub=0.15389, per=0.00008
+  date: diff=0.07496, sub=0.07544, per=0.00048
+  your service: diff=0.06973, sub=0.06973, per=0.00000
+  renewal: diff=0.05529, sub=0.05529, per=0.00000
+  subscription: diff=0.04935, sub=0.04935, per=0.00000
+  service subscription: diff=0.04873, sub=0.04873, per=0.00000
+  access: diff=0.04865, sub=0.04890, per=0.00025
+  membership: diff=0.04865, sub=0.04865, per=0.00000
+  plan: diff=0.04671, sub=0.04803, per=0.00132
+  for service: diff=0.04414, sub=0.04414, per=0.00000
+  service account: diff=0.04226, sub=0.04226, per=0.00000
+  for: diff=0.03778, sub=0.04670, per=0.00891
+  your: diff=0.03650, sub=0.04263, per=0.00614
+  service plan: diff=0.03629, sub=0.03629, per=0.00000
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+C:\Users\xxtri\AppData\Roaming\Python\Python312\site-packages\sklearn\utils\validation.py:2827: UserWarning: X does 
+not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+  amount: diff=0.02986, sub=0.03032, per=0.00046
+  account: diff=0.02943, sub=0.02943, per=0.00000
+  service access: diff=0.02872, sub=0.02872, per=0.00000
+  trial: diff=0.02761, sub=0.02761, per=0.00000
+  has: diff=0.02745, sub=0.02930, per=0.00186
+  has been: diff=0.02733, sub=0.02753, per=0.00020
+Higher in personal:
+  you: diff=-0.02972, sub=0.00076, per=0.03048
+  in: diff=-0.01889, sub=0.00098, per=0.01987
+  me: diff=-0.01819, sub=0.00000, per=0.01819
+  it: diff=-0.01588, sub=0.00020, per=0.01608
+  my: diff=-0.01584, sub=0.00000, per=0.01584
+  to: diff=-0.01538, sub=0.00750, per=0.02288
+  that: diff=-0.01309, sub=0.00000, per=0.01309
+  so: diff=-0.01123, sub=0.00063, per=0.01186
+  have: diff=-0.01116, sub=0.00021, per=0.01137
+  but: diff=-0.01048, sub=0.00000, per=0.01048
+  can: diff=-0.01035, sub=0.00074, per=0.01109
+  ok: diff=-0.01029, sub=0.00000, per=0.01029
+  if: diff=-0.00990, sub=0.00101, per=0.01091
+  and: diff=-0.00974, sub=0.00608, per=0.01582
+  we: diff=-0.00943, sub=0.00000, per=0.00943
+  what: diff=-0.00897, sub=0.00000, per=0.00897
+  do: diff=-0.00892, sub=0.00000, per=0.00892
+  no: diff=-0.00889, sub=0.00133, per=0.01023
+  how: diff=-0.00874, sub=0.00000, per=0.00874
+  just: diff=-0.00854, sub=0.00000, per=0.00854
+
+=== TOP 25 LIGHTGBM FEATURES (gain) ===
+  Column_8500: 70938.8
+  Column_10013: 55954.1
+  Column_1347: 25526.5
+  Column_13645: 23674.3
+  Column_2879: 18331.8
+  Column_610: 11717.3
+  Column_9407: 7637.8
+  Column_13438: 2373.7
+  Column_2459: 2133.4
+  Column_9858: 1797.2
+  Column_8933: 1784.2
+  Column_255: 1611.3
+  Column_13653: 1493.2
+  Column_12453: 775.7
+  Column_10028: 683.3
+  Column_6948: 676.2
+  Column_8077: 667.7
+  Column_10939: 629.6
+  Column_12361: 619.5
+  Column_8616: 608.2
+  Column_10026: 607.8
+  Column_4788: 457.5
+  Column_328: 385.3
+  Column_4786: 371.4
+  Column_5667: 337.2
+
+Subscription-related features with non-zero importance (top 20):
+
+=== UNSEEN SUBSCRIPTION PROBABILITIES (n=20) ===
+Message: SonyLIV WWE Network monthly membership renewed at Rs 299. Next billing 16-Sep-2026.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=0.9999
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: Gaana Plus annual plan activated. Membership valid till 15-Aug-2027.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=1.0000
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: Coursera Plus trial converted to paid plan Rs 3,999/year starting today.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0001
+  P(otp)=0.0001
+  P(personal)=0.9955
+  P(recharge_data)=0.0043
+  P(subscription)=0.0000
+---
+Message: LinkedIn Premium Career monthly subscription payment of Rs 1,499 successful.
+Expected: subscription | Predicted: banking
+  P(banking)=0.4908
+  P(otp)=0.0011
+  P(personal)=0.4714
+  P(recharge_data)=0.0364
+  P(subscription)=0.0004
+---
+Message: Microsoft 365 Family renewal completed. Access for 6 members till 01-Mar-2027.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=1.0000
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: Disney+ Hotstar Super annual membership renewed at Rs 899.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=0.9999
+  P(recharge_data)=0.0001
+  P(subscription)=0.0000
+---
+Message: Apple One individual plan renewal Rs 195/month processed successfully.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0138
+  P(otp)=0.0004
+  P(personal)=0.8696
+  P(recharge_data)=0.1160
+  P(subscription)=0.0002
+---
+Message: Canva Pro team subscription renewed. Next invoice on 10-Sep-2026.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=1.0000
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: Adobe Creative Cloud Photography plan auto-renewed Rs 638/month.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0008
+  P(otp)=0.0001
+  P(personal)=0.9972
+  P(recharge_data)=0.0018
+  P(subscription)=0.0000
+---
+Message: Zee5 Premium membership extended for 12 months after payment Rs 999.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0090
+  P(otp)=0.0008
+2026-08-17 00:35:33,819 - ml.model.utils - INFO - Loading model artifacts from 
+C:\Users\xxtri\Desktop\NexAlert\ml\model\artifacts
+  P(personal)=0.9885
+  P(recharge_data)=0.0015
+  P(subscription)=0.0002
+---
+Message: Cult.fit Elite membership renewed. Valid across Bangalore centers till 30-Jun-2027.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=1.0000
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: Times Prime annual subscription activated. Benefits unlocked on partner apps.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=1.0000
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: Notion Plus workspace billing Rs 800/month confirmed for September cycle.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0004
+  P(otp)=0.0001
+  P(personal)=0.9995
+  P(recharge_data)=0.0001
+  P(subscription)=0.0000
+---
+Message: Google One 200GB storage plan renewed at Rs 210/month.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0001
+  P(otp)=0.0001
+  P(personal)=0.9976
+  P(recharge_data)=0.0022
+  P(subscription)=0.0000
+---
+Message: Amazon Prime membership auto-renewed Rs 1,499/year. Manage in app settings.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0009
+  P(otp)=0.0003
+  P(personal)=0.9974
+  P(recharge_data)=0.0013
+  P(subscription)=0.0001
+---
+Message: BookMyShow VIP annual pass renewed. Early access benefits active.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0003
+  P(otp)=0.0005
+  P(personal)=0.9958
+  P(recharge_data)=0.0033
+  P(subscription)=0.0002
+---
+Message: Swiggy One 3-month membership renewed at Rs 749.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0003
+  P(otp)=0.0000
+  P(personal)=0.9996
+  P(recharge_data)=0.0001
+  P(subscription)=0.0000
+---
+Message: ET Prime digital subscription payment Rs 899 received. Access enabled.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0509
+  P(otp)=0.0007
+  P(personal)=0.7416
+  P(recharge_data)=0.2065
+  P(subscription)=0.0003
+---
+Message: Airtel Xstream Premium OTT bundle renewed as part of postpaid plan add-on.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=1.0000
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Message: JioSaavn Pro yearly membership renewed at Rs 749. Enjoy ad-free music.
+Expected: subscription | Predicted: personal
+  P(banking)=0.0000
+  P(otp)=0.0000
+  P(personal)=0.9999
+  P(recharge_data)=0.0000
+  P(subscription)=0.0000
+---
+Unseen subscription P(subscription): min=0.0000 max=0.0004 mean=0.0001
+Unseen subscription P(personal): min=0.4714 max=1.0000 mean=0.9527
+Cases with P(subscription)<0.05: 20/20
+Cases where P(personal) > P(subscription): 20/20
+
+=== HELD-OUT TEST SPLIT SUBSCRIPTION ===
+Count: 169
+Correct: 169
+              precision    recall  f1-score   support
+
+subscription       1.00      1.00      1.00       169
+
+    accuracy                           1.00       169
+   macro avg       1.00      1.00      1.00       169
+weighted avg       1.00      1.00      1.00       169
+
+Correct subscription test examples (up to 5):
+  auto-renewal is enabled for <service>
+  <service> <duration> membership has been activated after the payment was received.
+  <service> access cancellation request is complete.
+  your <service> subscription plan is due to expire until <date>.
+  please note that <service> access expires on <date>.
+Wrong subscription test examples (up to 5):
+
+Keyword presence: correct held-out vs failed unseen
+  subscription: correct_test=26 failed_unseen=4
+  membership: correct_test=40 failed_unseen=8
+  renew: correct_test=56 failed_unseen=13
+  premium: correct_test=10 failed_unseen=3
+  trial: correct_test=23 failed_unseen=1
+  cancel: correct_test=15 failed_unseen=0
+2026-08-17 00:35:33,898 - ml.model.utils - INFO - Γ£ô Loaded model bundle from 
+C:\Users\xxtri\Desktop\NexAlert\ml\model\artifacts\model_bundle.pkl
+2026-08-17 00:35:33,898 - ml.model.utils - INFO -    Threshold: 0.4000
+  expire: correct_test=13 failed_unseen=0
+  billing: correct_test=15 failed_unseen=2
+  plan: correct_test=38 failed_unseen=6
+  renewal: correct_test=38 failed_unseen=2
+  renewed: correct_test=12 failed_unseen=11
+  member: correct_test=42 failed_unseen=9
+
+=== CLASS WEIGHTS (STATIC) ===
+{'personal': 1.0, 'banking': 1.5, 'otp': 2.0, 'subscription': 1.5, 'recharge_data': 1.5}
+train.py applies: pipeline.fit(X_train, y_train, classifier__sample_weight=sample_weights)
+
+=== STAGE 1 BRIEF (UNSEEN SPAM) ===
+Threshold: 0.4
+Spam unseen: 52 FN: 29 FP: 4
+Spam recall: 0.4423076923076923
+Sample false negatives (P(spam) below threshold):
+  P(spam)=0.1610 thr=0.4 | Amazon Pay: payment of Rs 8,750 failed. Retry at amazonpay-secure-auth.com to avoid penalty.
+  P(spam)=0.0875 thr=0.4 | Flipkart delivery failed. Pay Rs 49 re-delivery fee at flipkart-redelivery.paynow.in
+  P(spam)=0.2827 thr=0.4 | Jio number selected for 1-year free recharge. Register at jio-lucky-winner.biz/register
+  P(spam)=0.3681 thr=0.4 | Your Google Pay account linked to new device. Secure at gpay-device-lock.help/secure
+  P(spam)=0.3841 thr=0.4 | Zomato Pro membership payment declined. Update details at zomato-pro-billing.com
+  P(spam)=0.1148 thr=0.4 | Courier held at customs. Pay Rs 350 clearance fee via customs-parcel-pay.in
+  P(spam)=0.3126 thr=0.4 | Bank of Baroda: NEFT reversal needed. Confirm at bob-neft-reverse.net/confirm
+  P(spam)=0.1767 thr=0.4 | Your EMI of Rs 3,200 bounced. Avoid legal action at emi-recovery-portal.in/pay
+  P(spam)=0.3078 thr=0.4 | Canara Bank: update mobile number via canara-mobile-update.co.in before cutoff.
+  P(spam)=0.2411 thr=0.4 | Free 12-month Hotstar with new credit card. Apply at hotstar-card-offer.promo/apply

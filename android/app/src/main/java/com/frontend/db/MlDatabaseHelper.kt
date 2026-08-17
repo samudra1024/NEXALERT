@@ -40,7 +40,9 @@ class MlDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
         onCreate(db)
     }
 
-    private val validHamCategories = setOf("personal", "otp", "banking")
+    private val validHamCategories = setOf(
+        "personal", "otp", "banking", "subscription", "recharge_data"
+    )
 
     /** True if ml_metadata already has a row for this exact SMS (address + timestamp). */
     fun hasMetadata(address: String, timestamp: Long): Boolean {
@@ -75,7 +77,7 @@ class MlDatabaseHelper(context: Context) : SQLiteOpenHelper(context, DATABASE_NA
 
     /**
      * True when an existing row is a finished classification under the current category scheme.
-     * Spam rows may keep category "unknown"; HAM rows must be personal/otp/banking.
+     * Spam rows may keep category "unknown"; HAM rows must be a valid Stage 2 label.
      */
     fun isClassificationComplete(address: String, timestamp: Long): Boolean {
         val db = readableDatabase
