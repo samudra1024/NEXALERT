@@ -1,0 +1,1121 @@
+==============================================================================
+STAGE 1 FALSE NEGATIVE FEATURE DIAGNOSTIC — V2 BENCHMARK
+==============================================================================
+total FNs = 31
+threshold = 0.400
+loaded artifact threshold = 0.400
+model = Logistic Regression
+vectorizer = TF-IDF
+vocabulary size = 5000 (configured max_features = 5000)
+benchmark = C:\Users\xxtri\Desktop\NexAlert\ml\data\unseen_boundary_test_v2.csv
+training dataset = C:\Users\xxtri\Desktop\NexAlert\ml\data\dataset.csv
+
+A. FN PROBABILITY DISTRIBUTION
+------------------------------------------------------------------------------
+  <0.10           2  (  6.5%)
+  0.10-0.19       6  ( 19.4%)
+  0.20-0.29      12  ( 38.7%)
+  0.30-0.39      11  ( 35.5%)
+
+B. FN COUNTS BY BOUNDARY/TYPE
+------------------------------------------------------------------------------
+  fake_recharge_offer                         5
+  fake_account_block                          5
+  fake_insurance                              4
+  fake_payment_fail                           3
+  fake_cashback                               3
+  fake_loan_recovery                          2
+  fake_gov_refund                             2
+  fake_customer_care                          2
+  fake_bank_alert                             1
+  fake_upi_alert                              1
+  fake_subscription                           1
+  fake_delivery_fee                           1
+  fake_kyc                                    1
+
+C. COMMON FN WORDS/PHRASES (TF-IDF VOCABULARY ANALYSIS)
+------------------------------------------------------------------------------
+  In vocabulary with NEGATIVE coefficients (ham-pulling):
+    renew                    in   5 FNs  coef=-0.1581
+    data                     in   4 FNs  coef=-0.2339
+    mobile                   in   3 FNs  coef=-0.2774
+    bank                     in   2 FNs  coef=-0.2773
+    postpaid                 in   2 FNs  coef=-0.6318
+    unsuccessful             in   2 FNs  coef=-0.2303
+    file                     in   2 FNs  coef=-0.1647
+    plan                     in   2 FNs  coef=-0.9772
+    includes                 in   2 FNs  coef=-0.2288
+    month                    in   2 FNs  coef=-0.6340
+    add                      in   2 FNs  coef=-0.5601
+    days                     in   2 FNs  coef=-0.3032
+    id                       in   2 FNs  coef=-0.3264
+    expiry                   in   2 FNs  coef=-0.0378
+    password                 in   1 FNs  coef=-1.1076
+    union                    in   1 FNs  coef=-0.0033
+    generated                in   1 FNs  coef=-0.0909
+    active                   in   1 FNs  coef=-0.9957
+    auto                     in   1 FNs  coef=-0.1817
+    service                  in   1 FNs  coef=-0.8733
+    cloud                    in   1 FNs  coef=-0.2148
+    try                      in   1 FNs  coef=-1.1546
+    topup                    in   1 FNs  coef=-0.0941
+    family                   in   1 FNs  coef=-0.3021
+    online                   in   1 FNs  coef=-0.5418
+
+  In vocabulary with POSITIVE coefficients (spam-pulling):
+    amount                   in  13 FNs  coef=+0.5457
+    pay                      in   4 FNs  coef=+1.5465
+    com                      in   4 FNs  coef=+0.6738
+    fix                      in   3 FNs  coef=+0.9649
+    renewal                  in   3 FNs  coef=+0.7805
+    access                   in   2 FNs  coef=+1.2074
+    statement                in   2 FNs  coef=+0.1541
+    storage                  in   2 FNs  coef=+0.0624
+    purchase                 in   2 FNs  coef=+0.3814
+    airtel                   in   2 FNs  coef=+0.2720
+    bsnl                     in   2 FNs  coef=+0.6910
+    kyc                      in   2 FNs  coef=+2.8587
+    business                 in   2 FNs  coef=+0.0824
+    premium                  in   2 FNs  coef=+1.4396
+    net                      in   2 FNs  coef=+3.0812
+    employee                 in   2 FNs  coef=+0.1555
+    reset                    in   1 FNs  coef=+0.0994
+    expired                  in   1 FNs  coef=+1.9200
+    credentials              in   1 FNs  coef=+0.5570
+    paytm                    in   1 FNs  coef=+0.7308
+    limit                    in   1 FNs  coef=+0.0351
+    settle                   in   1 FNs  coef=+0.9179
+    prevent                  in   1 FNs  coef=+2.0930
+    debit                    in   1 FNs  coef=+0.0489
+    card                     in   1 FNs  coef=+0.5094
+
+  Missing from TF-IDF vocabulary (token not in vectorizer):
+    for                      in  10 FNs
+    due                      in   3 FNs
+    bill                     in   2 FNs
+    now                      in   2 FNs
+    grocery                  in   2 FNs
+    city                     in   1 FNs
+    cub                      in   1 FNs
+    keep                     in   1 FNs
+    autodebit                in   1 FNs
+    pause                    in   1 FNs
+    3308                     in   1 FNs
+    onfile                   in   1 FNs
+    top                      in   1 FNs
+    alternate                in   1 FNs
+    quickpay                 in   1 FNs
+    coldchain                in   1 FNs
+    fibre                    in   1 FNs
+    enroll                   in   1 FNs
+    offered                  in   1 FNs
+    bharat                   in   1 FNs
+    satdata                  in   1 FNs
+    backup                   in   1 FNs
+    customers                in   1 FNs
+    rural                    in   1 FNs
+    satellite                in   1 FNs
+    slot                     in   1 FNs
+    jioairfiber              in   1 FNs
+    installation             in   1 FNs
+    bundle                   in   1 FNs
+    promo                    in   1 FNs
+
+D. MOST COMMON IMPORTANT WORDS ABSENT FROM VECTORIZER VOCABULARY
+------------------------------------------------------------------------------
+  due                      in   3 FNs
+  bill                     in   2 FNs
+  grocery                  in   2 FNs
+  city                     in   1 FNs
+  cub                      in   1 FNs
+  keep                     in   1 FNs
+  autodebit                in   1 FNs
+  pause                    in   1 FNs
+  3308                     in   1 FNs
+  onfile                   in   1 FNs
+  alternate                in   1 FNs
+  top                      in   1 FNs
+  quickpay                 in   1 FNs
+  coldchain                in   1 FNs
+  bharat                   in   1 FNs
+  enroll                   in   1 FNs
+  fibre                    in   1 FNs
+  offered                  in   1 FNs
+  backup                   in   1 FNs
+  customers                in   1 FNs
+  rural                    in   1 FNs
+  satdata                  in   1 FNs
+  satellite                in   1 FNs
+  bundle                   in   1 FNs
+  installation             in   1 FNs
+  jioairfiber              in   1 FNs
+  promo                    in   1 FNs
+  slot                     in   1 FNs
+  broadband                in   1 FNs
+  mobiledata               in   1 FNs
+  per                      in   1 FNs
+  xsafe                    in   1 FNs
+  bbd                      in   1 FNs
+  billion                  in   1 FNs
+  reliance                 in   1 FNs
+  scan                     in   1 FNs
+  smartpoints              in   1 FNs
+  bbstar                   in   1 FNs
+  hamper                   in   1 FNs
+  selection                in   1 FNs
+
+F. FN MESSAGES VS TRAINING DATASET VOCABULARY
+------------------------------------------------------------------------------
+  common_vocabulary               219 token occurrences across FNs
+  rare_vocabulary                   2 token occurrences across FNs
+  unseen_vocabulary               172 token occurrences across FNs
+  domain/service terms:
+    pay                    4 FNs  [in_vocab]
+    bank                   2 FNs  [in_vocab]
+    airtel                 2 FNs  [in_vocab]
+    kyc                    2 FNs  [in_vocab]
+    paytm                  1 FNs  [in_vocab]
+    wallet                 1 FNs  [in_vocab]
+    broadband              1 FNs  [OOV]
+    flipkart               1 FNs  [in_vocab]
+    account                1 FNs  [in_vocab]
+    irctc                  1 FNs  [in_vocab]
+  scam-action terms:
+    reset                  1 FNs  [in_vocab]
+    expired                1 FNs  [in_vocab]
+    validate               1 FNs  [in_vocab]
+    update                 1 FNs  [in_vocab]
+    retry                  1 FNs  [in_vocab]
+    approve                1 FNs  [in_vocab]
+    failed                 1 FNs  [in_vocab]
+    authorize              1 FNs  [in_vocab]
+    auth                   1 FNs  [in_vocab]
+    upload                 1 FNs  [in_vocab]
+    login                  1 FNs  [in_vocab]
+    unlock                 1 FNs  [in_vocab]
+  transactional terms:
+    amount                13 FNs  [in_vocab]
+    pay                    4 FNs  [in_vocab]
+    due                    3 FNs  [OOV]
+    statement              2 FNs  [in_vocab]
+    bill                   2 FNs  [OOV]
+    debit                  1 FNs  [in_vocab]
+    card                   1 FNs  [in_vocab]
+    charge                 1 FNs  [in_vocab]
+    payment                1 FNs  [in_vocab]
+    mandate                1 FNs  [in_vocab]
+    fee                    1 FNs  [in_vocab]
+
+E. PER-FN FEATURE CONTRIBUTION DETAIL
+------------------------------------------------------------------------------
+#1
+Message: City Union Bank e-statement password expired. Reset credentials at cub-statement-access.in
+Boundary/type: fake_bank_alert
+Spam probability: 0.2784
+Tokens/features in TF-IDF vocabulary: union, bank, statement, password, expired, reset, credentials, access, union bank, statement access
+Active TF-IDF features: 11  (ham contrib sum=-0.3011, spam contrib sum=+1.2675)
+Important active features (by |contribution|):
+  - expired: tfidf=0.2703, coef=+1.9200, contrib=+0.5189 -> SPAM
+  - password: tfidf=0.2381, coef=-1.1076, contrib=-0.2637 -> HAM
+  - access: tfidf=0.1801, coef=+1.2074, contrib=+0.2174 -> SPAM
+  - credentials: tfidf=0.3629, coef=+0.5570, contrib=+0.2021 -> SPAM
+  - statement access: tfidf=0.3629, coef=+0.3289, contrib=+0.1194 -> SPAM
+  - bank statement: tfidf=0.3295, coef=+0.3201, contrib=+0.1055 -> SPAM
+  - statement: tfidf=0.4870, coef=+0.1541, contrib=+0.0750 -> SPAM
+  - bank: tfidf=0.1320, coef=-0.2773, contrib=-0.0366 -> HAM
+  - reset: tfidf=0.2814, coef=+0.0994, contrib=+0.0280 -> SPAM
+  - union bank: tfidf=0.2573, coef=+0.0048, contrib=+0.0012 -> SPAM
+Top 5 features pushing toward HAM:
+    - password: tfidf=0.2381, coef=-1.1076, contrib=-0.2637 -> HAM
+    - bank: tfidf=0.1320, coef=-0.2773, contrib=-0.0366 -> HAM
+    - union: tfidf=0.2567, coef=-0.0033, contrib=-0.0008 -> HAM
+    - union bank: tfidf=0.2573, coef=+0.0048, contrib=+0.0012 -> SPAM
+    - reset: tfidf=0.2814, coef=+0.0994, contrib=+0.0280 -> SPAM
+Top 5 features pushing toward SPAM:
+    - expired: tfidf=0.2703, coef=+1.9200, contrib=+0.5189 -> SPAM
+    - access: tfidf=0.1801, coef=+1.2074, contrib=+0.2174 -> SPAM
+    - credentials: tfidf=0.3629, coef=+0.5570, contrib=+0.2021 -> SPAM
+    - statement access: tfidf=0.3629, coef=+0.3289, contrib=+0.1194 -> SPAM
+    - bank statement: tfidf=0.3295, coef=+0.3201, contrib=+0.1055 -> SPAM
+OOV tokens (not in vocabulary): city, cub
+----------------------------------------
+#2
+Message: Paytm Postpaid bill of Rs 1,680 generated. Pay now at paytm-postpaid-settle.in to keep limit active.
+Boundary/type: fake_upi_alert
+Spam probability: 0.1968
+Tokens/features in TF-IDF vocabulary: paytm, postpaid, amount, generated, pay, settle, limit, active
+Active TF-IDF features: 8  (ham contrib sum=-0.6030, spam contrib sum=+1.1151)
+Important active features (by |contribution|):
+  - pay: tfidf=0.2320, coef=+1.5465, contrib=+0.3588 -> SPAM
+  - paytm: tfidf=0.4797, coef=+0.7308, contrib=+0.3506 -> SPAM
+  - postpaid: tfidf=0.5415, coef=-0.6318, contrib=-0.3422 -> HAM
+  - settle: tfidf=0.3467, coef=+0.9179, contrib=+0.3182 -> SPAM
+  - active: tfidf=0.2322, coef=-0.9957, contrib=-0.2312 -> HAM
+  - amount: tfidf=0.1377, coef=+0.5457, contrib=+0.0751 -> SPAM
+  - generated: tfidf=0.3257, coef=-0.0909, contrib=-0.0296 -> HAM
+  - limit: tfidf=0.3517, coef=+0.0351, contrib=+0.0124 -> SPAM
+Top 5 features pushing toward HAM:
+    - postpaid: tfidf=0.5415, coef=-0.6318, contrib=-0.3422 -> HAM
+    - active: tfidf=0.2322, coef=-0.9957, contrib=-0.2312 -> HAM
+    - generated: tfidf=0.3257, coef=-0.0909, contrib=-0.0296 -> HAM
+    - limit: tfidf=0.3517, coef=+0.0351, contrib=+0.0124 -> SPAM
+    - amount: tfidf=0.1377, coef=+0.5457, contrib=+0.0751 -> SPAM
+Top 5 features pushing toward SPAM:
+    - pay: tfidf=0.2320, coef=+1.5465, contrib=+0.3588 -> SPAM
+    - paytm: tfidf=0.4797, coef=+0.7308, contrib=+0.3506 -> SPAM
+    - settle: tfidf=0.3467, coef=+0.9179, contrib=+0.3182 -> SPAM
+    - amount: tfidf=0.1377, coef=+0.5457, contrib=+0.0751 -> SPAM
+    - limit: tfidf=0.3517, coef=+0.0351, contrib=+0.0124 -> SPAM
+OOV tokens (not in vocabulary): bill, keep, now
+----------------------------------------
+#3
+Message: Auto-debit for CLOUD STORAGE Rs 120 unsuccessful. Prevent service pause at autodebit-fix.in
+Boundary/type: fake_payment_fail
+Spam probability: 0.2986
+Tokens/features in TF-IDF vocabulary: auto, debit, cloud, storage, amount, unsuccessful, prevent, service, fix, auto debit, amount unsuccessful, prevent service
+Active TF-IDF features: 12  (ham contrib sum=-0.3262, spam contrib sum=+1.3908)
+Important active features (by |contribution|):
+  - prevent: tfidf=0.2653, coef=+2.0930, contrib=+0.5553 -> SPAM
+  - fix: tfidf=0.2841, coef=+0.9649, contrib=+0.2742 -> SPAM
+  - auto debit: tfidf=0.3402, coef=+0.6963, contrib=+0.2369 -> SPAM
+  - prevent service: tfidf=0.3334, coef=+0.5084, contrib=+0.1695 -> SPAM
+  - service: tfidf=0.1444, coef=-0.8733, contrib=-0.1261 -> HAM
+  - cloud: tfidf=0.3580, coef=-0.2148, contrib=-0.0769 -> HAM
+  - unsuccessful: tfidf=0.3136, coef=-0.2303, contrib=-0.0722 -> HAM
+  - amount: tfidf=0.1262, coef=+0.5457, contrib=+0.0689 -> SPAM
+  - amount unsuccessful: tfidf=0.3334, coef=+0.1603, contrib=+0.0534 -> SPAM
+  - auto: tfidf=0.2802, coef=-0.1817, contrib=-0.0509 -> HAM
+Top 5 features pushing toward HAM:
+    - service: tfidf=0.1444, coef=-0.8733, contrib=-0.1261 -> HAM
+    - cloud: tfidf=0.3580, coef=-0.2148, contrib=-0.0769 -> HAM
+    - unsuccessful: tfidf=0.3136, coef=-0.2303, contrib=-0.0722 -> HAM
+    - auto: tfidf=0.2802, coef=-0.1817, contrib=-0.0509 -> HAM
+    - debit: tfidf=0.2580, coef=+0.0489, contrib=+0.0126 -> SPAM
+Top 5 features pushing toward SPAM:
+    - prevent: tfidf=0.2653, coef=+2.0930, contrib=+0.5553 -> SPAM
+    - fix: tfidf=0.2841, coef=+0.9649, contrib=+0.2742 -> SPAM
+    - auto debit: tfidf=0.3402, coef=+0.6963, contrib=+0.2369 -> SPAM
+    - prevent service: tfidf=0.3334, coef=+0.5084, contrib=+0.1695 -> SPAM
+    - amount: tfidf=0.1262, coef=+0.5457, contrib=+0.0689 -> SPAM
+OOV tokens (not in vocabulary): autodebit, for, pause
+----------------------------------------
+#4
+Message: Card on file ending 3308 rejected for Rs 2,299 purchase. Validate card at card-onfile-update.com
+Boundary/type: fake_payment_fail
+Spam probability: 0.3988
+Tokens/features in TF-IDF vocabulary: card, file, ending, rejected, amount, purchase, validate, update, com
+Active TF-IDF features: 10  (ham contrib sum=-0.2329, spam contrib sum=+1.7410)
+Important active features (by |contribution|):
+  - update: tfidf=0.1870, coef=+4.0451, contrib=+0.7566 -> SPAM
+  - card: tfidf=0.4249, coef=+0.5094, contrib=+0.2165 -> SPAM
+  - validate: tfidf=0.3531, coef=+0.5853, contrib=+0.2067 -> SPAM
+  - com: tfidf=0.2541, coef=+0.6738, contrib=+0.1712 -> SPAM
+  - card card: tfidf=0.2917, coef=-0.5838, contrib=-0.1703 -> HAM
+  - purchase: tfidf=0.3309, coef=+0.3814, contrib=+0.1262 -> SPAM
+  - rejected: tfidf=0.3622, coef=+0.3272, contrib=+0.1185 -> SPAM
+  - ending: tfidf=0.3285, coef=+0.2271, contrib=+0.0746 -> SPAM
+  - amount: tfidf=0.1296, coef=+0.5457, contrib=+0.0707 -> SPAM
+  - file: tfidf=0.3805, coef=-0.1647, contrib=-0.0627 -> HAM
+Top 5 features pushing toward HAM:
+    - card card: tfidf=0.2917, coef=-0.5838, contrib=-0.1703 -> HAM
+    - file: tfidf=0.3805, coef=-0.1647, contrib=-0.0627 -> HAM
+    - amount: tfidf=0.1296, coef=+0.5457, contrib=+0.0707 -> SPAM
+    - ending: tfidf=0.3285, coef=+0.2271, contrib=+0.0746 -> SPAM
+    - rejected: tfidf=0.3622, coef=+0.3272, contrib=+0.1185 -> SPAM
+Top 5 features pushing toward SPAM:
+    - update: tfidf=0.1870, coef=+4.0451, contrib=+0.7566 -> SPAM
+    - card: tfidf=0.4249, coef=+0.5094, contrib=+0.2165 -> SPAM
+    - validate: tfidf=0.3531, coef=+0.5853, contrib=+0.2067 -> SPAM
+    - com: tfidf=0.2541, coef=+0.6738, contrib=+0.1712 -> SPAM
+    - purchase: tfidf=0.3309, coef=+0.3814, contrib=+0.1262 -> SPAM
+OOV tokens (not in vocabulary): 3308, for, onfile
+----------------------------------------
+#5
+Message: Wallet top-up Rs 500 unsuccessful. Try alternate method at wallet-topup-retry.co.in
+Boundary/type: fake_payment_fail
+Spam probability: 0.3825
+Tokens/features in TF-IDF vocabulary: wallet, amount, unsuccessful, try, method, topup, retry, amount unsuccessful
+Active TF-IDF features: 9  (ham contrib sum=-0.4378, spam contrib sum=+1.8775)
+Important active features (by |contribution|):
+  - wallet: tfidf=0.4665, coef=+2.1816, contrib=+1.0177 -> SPAM
+  - retry: tfidf=0.2923, coef=+1.5977, contrib=+0.4671 -> SPAM
+  - try: tfidf=0.2835, coef=-1.1546, contrib=-0.3274 -> HAM
+  - wallet amount: tfidf=0.3806, coef=+0.4999, contrib=+0.1903 -> SPAM
+  - unsuccessful: tfidf=0.3334, coef=-0.2303, contrib=-0.0768 -> HAM
+  - amount: tfidf=0.1342, coef=+0.5457, contrib=+0.0732 -> SPAM
+  - method: tfidf=0.2979, coef=+0.2433, contrib=+0.0725 -> SPAM
+  - amount unsuccessful: tfidf=0.3545, coef=+0.1603, contrib=+0.0568 -> SPAM
+  - topup: tfidf=0.3579, coef=-0.0941, contrib=-0.0337 -> HAM
+Top 5 features pushing toward HAM:
+    - try: tfidf=0.2835, coef=-1.1546, contrib=-0.3274 -> HAM
+    - unsuccessful: tfidf=0.3334, coef=-0.2303, contrib=-0.0768 -> HAM
+    - topup: tfidf=0.3579, coef=-0.0941, contrib=-0.0337 -> HAM
+    - amount unsuccessful: tfidf=0.3545, coef=+0.1603, contrib=+0.0568 -> SPAM
+    - method: tfidf=0.2979, coef=+0.2433, contrib=+0.0725 -> SPAM
+Top 5 features pushing toward SPAM:
+    - wallet: tfidf=0.4665, coef=+2.1816, contrib=+1.0177 -> SPAM
+    - retry: tfidf=0.2923, coef=+1.5977, contrib=+0.4671 -> SPAM
+    - wallet amount: tfidf=0.3806, coef=+0.4999, contrib=+0.1903 -> SPAM
+    - amount: tfidf=0.1342, coef=+0.5457, contrib=+0.0732 -> SPAM
+    - method: tfidf=0.2979, coef=+0.2433, contrib=+0.0725 -> SPAM
+OOV tokens (not in vocabulary): alternate, top
+----------------------------------------
+#6
+Message: Vi postpaid family plan bill Rs 1184 ready. Pay online at vi-postpaid-quickpay.co.in
+Boundary/type: fake_subscription
+Spam probability: 0.1367
+Tokens/features in TF-IDF vocabulary: vi, postpaid, family, plan, amount, ready, pay, online, vi postpaid, amount ready
+Active TF-IDF features: 11  (ham contrib sum=-0.7307, spam contrib sum=+0.8063)
+Important active features (by |contribution|):
+  - pay: tfidf=0.1798, coef=+1.5465, contrib=+0.2780 -> SPAM
+  - postpaid: tfidf=0.4196, coef=-0.6318, contrib=-0.2651 -> HAM
+  - amount ready: tfidf=0.2651, coef=+0.8017, contrib=+0.2125 -> SPAM
+  - vi: tfidf=0.3935, coef=+0.5225, contrib=+0.2056 -> SPAM
+  - plan: tfidf=0.1611, coef=-0.9772, contrib=-0.1574 -> HAM
+  - online: tfidf=0.2272, coef=-0.5418, contrib=-0.1231 -> HAM
+  - family: tfidf=0.2429, coef=-0.3021, contrib=-0.0734 -> HAM
+  - vi postpaid: tfidf=0.5305, coef=-0.1285, contrib=-0.0682 -> HAM
+  - amount: tfidf=0.1067, coef=+0.5457, contrib=+0.0582 -> SPAM
+  - ready: tfidf=0.2063, coef=+0.2520, contrib=+0.0520 -> SPAM
+Top 5 features pushing toward HAM:
+    - postpaid: tfidf=0.4196, coef=-0.6318, contrib=-0.2651 -> HAM
+    - plan: tfidf=0.1611, coef=-0.9772, contrib=-0.1574 -> HAM
+    - online: tfidf=0.2272, coef=-0.5418, contrib=-0.1231 -> HAM
+    - family: tfidf=0.2429, coef=-0.3021, contrib=-0.0734 -> HAM
+    - vi postpaid: tfidf=0.5305, coef=-0.1285, contrib=-0.0682 -> HAM
+Top 5 features pushing toward SPAM:
+    - pay: tfidf=0.1798, coef=+1.5465, contrib=+0.2780 -> SPAM
+    - amount ready: tfidf=0.2651, coef=+0.8017, contrib=+0.2125 -> SPAM
+    - vi: tfidf=0.3935, coef=+0.5225, contrib=+0.2056 -> SPAM
+    - amount: tfidf=0.1067, coef=+0.5457, contrib=+0.0582 -> SPAM
+    - ready: tfidf=0.2063, coef=+0.2520, contrib=+0.0520 -> SPAM
+OOV tokens (not in vocabulary): bill, quickpay
+----------------------------------------
+#7
+Message: Shadowfax grocery order awaiting cold-chain handling charge Rs 60. Approve at shadowfax-coldchain.in
+Boundary/type: fake_delivery_fee
+Spam probability: 0.3771
+Tokens/features in TF-IDF vocabulary: shadowfax, order, awaiting, cold, chain, handling, charge, amount, approve, handling charge, charge amount
+Active TF-IDF features: 11  (ham contrib sum=-0.0996, spam contrib sum=+1.5163)
+Important active features (by |contribution|):
+  - awaiting: tfidf=0.2343, coef=+1.4423, contrib=+0.3379 -> SPAM
+  - charge: tfidf=0.2255, coef=+1.3573, contrib=+0.3061 -> SPAM
+  - shadowfax: tfidf=0.5352, coef=+0.5004, contrib=+0.2678 -> SPAM
+  - handling: tfidf=0.2687, coef=+0.8808, contrib=+0.2367 -> SPAM
+  - charge amount: tfidf=0.2701, coef=+0.5930, contrib=+0.1601 -> SPAM
+  - handling charge: tfidf=0.3082, coef=+0.3757, contrib=+0.1158 -> SPAM
+  - amount: tfidf=0.1131, coef=+0.5457, contrib=+0.0617 -> SPAM
+  - cold: tfidf=0.3082, coef=-0.1189, contrib=-0.0366 -> HAM
+  - chain: tfidf=0.3260, coef=-0.0988, contrib=-0.0322 -> HAM
+  - order: tfidf=0.2714, coef=-0.1132, contrib=-0.0307 -> HAM
+Top 5 features pushing toward HAM:
+    - cold: tfidf=0.3082, coef=-0.1189, contrib=-0.0366 -> HAM
+    - chain: tfidf=0.3260, coef=-0.0988, contrib=-0.0322 -> HAM
+    - order: tfidf=0.2714, coef=-0.1132, contrib=-0.0307 -> HAM
+    - approve: tfidf=0.2828, coef=+0.1066, contrib=+0.0301 -> SPAM
+    - amount: tfidf=0.1131, coef=+0.5457, contrib=+0.0617 -> SPAM
+Top 5 features pushing toward SPAM:
+    - awaiting: tfidf=0.2343, coef=+1.4423, contrib=+0.3379 -> SPAM
+    - charge: tfidf=0.2255, coef=+1.3573, contrib=+0.3061 -> SPAM
+    - shadowfax: tfidf=0.5352, coef=+0.5004, contrib=+0.2678 -> SPAM
+    - handling: tfidf=0.2687, coef=+0.8808, contrib=+0.2367 -> SPAM
+    - charge amount: tfidf=0.2701, coef=+0.5930, contrib=+0.1601 -> SPAM
+OOV tokens (not in vocabulary): coldchain, grocery
+----------------------------------------
+#8
+Message: Airtel Thanks member eligible for free 12GB weekend data. Claim at airtel-weekend-data.com
+Boundary/type: fake_recharge_offer
+Spam probability: 0.3588
+Tokens/features in TF-IDF vocabulary: airtel, thanks, member, eligible, free, 12gb, weekend, data, claim, com
+Active TF-IDF features: 11  (ham contrib sum=-0.2770, spam contrib sum=+1.6153)
+Important active features (by |contribution|):
+  - claim: tfidf=0.1866, coef=+4.6803, contrib=+0.8736 -> SPAM
+  - eligible: tfidf=0.2616, coef=+0.9110, contrib=+0.2383 -> SPAM
+  - weekend: tfidf=0.4703, coef=-0.4421, contrib=-0.2079 -> HAM
+  - com: tfidf=0.2245, coef=+0.6738, contrib=+0.1513 -> SPAM
+  - airtel: tfidf=0.3936, coef=+0.2720, contrib=+0.1071 -> SPAM
+  - member: tfidf=0.2793, coef=+0.3801, contrib=+0.1062 -> SPAM
+  - eligible free: tfidf=0.3300, coef=+0.2611, contrib=+0.0862 -> SPAM
+  - data: tfidf=0.2953, coef=-0.2339, contrib=-0.0691 -> HAM
+  - free: tfidf=0.2034, coef=+0.2133, contrib=+0.0434 -> SPAM
+  - 12gb: tfidf=0.3247, coef=+0.0216, contrib=+0.0070 -> SPAM
+Top 5 features pushing toward HAM:
+    - weekend: tfidf=0.4703, coef=-0.4421, contrib=-0.2079 -> HAM
+    - data: tfidf=0.2953, coef=-0.2339, contrib=-0.0691 -> HAM
+    - thanks: tfidf=0.2221, coef=+0.0105, contrib=+0.0023 -> SPAM
+    - 12gb: tfidf=0.3247, coef=+0.0216, contrib=+0.0070 -> SPAM
+    - free: tfidf=0.2034, coef=+0.2133, contrib=+0.0434 -> SPAM
+Top 5 features pushing toward SPAM:
+    - claim: tfidf=0.1866, coef=+4.6803, contrib=+0.8736 -> SPAM
+    - eligible: tfidf=0.2616, coef=+0.9110, contrib=+0.2383 -> SPAM
+    - com: tfidf=0.2245, coef=+0.6738, contrib=+0.1513 -> SPAM
+    - airtel: tfidf=0.3936, coef=+0.2720, contrib=+0.1071 -> SPAM
+    - member: tfidf=0.2793, coef=+0.3801, contrib=+0.1062 -> SPAM
+OOV tokens (not in vocabulary): for
+----------------------------------------
+#9
+Message: BSNL Bharat Fibre customer offered mobile FRC combo. Enroll at bsnl-fibre-combo.co.in
+Boundary/type: fake_recharge_offer
+Spam probability: 0.2888
+Tokens/features in TF-IDF vocabulary: bsnl, customer, mobile, frc, combo, frc combo
+Active TF-IDF features: 6  (ham contrib sum=-0.0545, spam contrib sum=+1.0717)
+Important active features (by |contribution|):
+  - customer: tfidf=0.1857, coef=+2.9710, contrib=+0.5517 -> SPAM
+  - bsnl: tfidf=0.5029, coef=+0.6910, contrib=+0.3475 -> SPAM
+  - combo: tfidf=0.6273, coef=+0.1162, contrib=+0.0729 -> SPAM
+  - frc combo: tfidf=0.3785, coef=+0.1470, contrib=+0.0556 -> SPAM
+  - mobile: tfidf=0.1965, coef=-0.2774, contrib=-0.0545 -> HAM
+  - frc: tfidf=0.3705, coef=+0.1187, contrib=+0.0440 -> SPAM
+Top 5 features pushing toward HAM:
+    - mobile: tfidf=0.1965, coef=-0.2774, contrib=-0.0545 -> HAM
+    - frc: tfidf=0.3705, coef=+0.1187, contrib=+0.0440 -> SPAM
+    - frc combo: tfidf=0.3785, coef=+0.1470, contrib=+0.0556 -> SPAM
+    - combo: tfidf=0.6273, coef=+0.1162, contrib=+0.0729 -> SPAM
+    - bsnl: tfidf=0.5029, coef=+0.6910, contrib=+0.3475 -> SPAM
+Top 5 features pushing toward SPAM:
+    - customer: tfidf=0.1857, coef=+2.9710, contrib=+0.5517 -> SPAM
+    - bsnl: tfidf=0.5029, coef=+0.6910, contrib=+0.3475 -> SPAM
+    - combo: tfidf=0.6273, coef=+0.1162, contrib=+0.0729 -> SPAM
+    - frc combo: tfidf=0.3785, coef=+0.1470, contrib=+0.0556 -> SPAM
+    - frc: tfidf=0.3705, coef=+0.1187, contrib=+0.0440 -> SPAM
+OOV tokens (not in vocabulary): bharat, enroll, fibre, offered
+----------------------------------------
+#10
+Message: BSNL satellite-backup data trial for rural customers. Sign up at bsnl-satdata-trial.co.in
+Boundary/type: fake_recharge_offer
+Spam probability: 0.1489
+Tokens/features in TF-IDF vocabulary: bsnl, data, trial, sign
+Active TF-IDF features: 4  (ham contrib sum=-0.2893, spam contrib sum=+0.4650)
+Important active features (by |contribution|):
+  - bsnl: tfidf=0.6729, coef=+0.6910, contrib=+0.4650 -> SPAM
+  - sign: tfidf=0.3814, coef=-0.4639, contrib=-0.1770 -> HAM
+  - data: tfidf=0.2572, coef=-0.2339, contrib=-0.0602 -> HAM
+  - trial: tfidf=0.5793, coef=-0.0900, contrib=-0.0521 -> HAM
+Top 5 features pushing toward HAM:
+    - sign: tfidf=0.3814, coef=-0.4639, contrib=-0.1770 -> HAM
+    - data: tfidf=0.2572, coef=-0.2339, contrib=-0.0602 -> HAM
+    - trial: tfidf=0.5793, coef=-0.0900, contrib=-0.0521 -> HAM
+    - bsnl: tfidf=0.6729, coef=+0.6910, contrib=+0.4650 -> SPAM
+Top 5 features pushing toward SPAM:
+    - bsnl: tfidf=0.6729, coef=+0.6910, contrib=+0.4650 -> SPAM
+    - trial: tfidf=0.5793, coef=-0.0900, contrib=-0.0521 -> HAM
+    - data: tfidf=0.2572, coef=-0.2339, contrib=-0.0602 -> HAM
+    - sign: tfidf=0.3814, coef=-0.4639, contrib=-0.1770 -> HAM
+OOV tokens (not in vocabulary): backup, customers, for, rural, satdata, satellite
+----------------------------------------
+#11
+Message: JioAirFiber installation promo includes 6-month mobile data bundle. Book slot jioairfiber-book.com
+Boundary/type: fake_recharge_offer
+Spam probability: 0.0927
+Tokens/features in TF-IDF vocabulary: includes, month, mobile, data, book, com, mobile data
+Active TF-IDF features: 7  (ham contrib sum=-0.5582, spam contrib sum=+0.1959)
+Important active features (by |contribution|):
+  - month: tfidf=0.3378, coef=-0.6340, contrib=-0.2142 -> HAM
+  - com: tfidf=0.2899, coef=+0.6738, contrib=+0.1953 -> SPAM
+  - mobile data: tfidf=0.3748, coef=-0.3545, contrib=-0.1329 -> HAM
+  - includes: tfidf=0.4133, coef=-0.2288, contrib=-0.0946 -> HAM
+  - mobile: tfidf=0.2302, coef=-0.2774, contrib=-0.0639 -> HAM
+  - data: tfidf=0.2253, coef=-0.2339, contrib=-0.0527 -> HAM
+  - book: tfidf=0.6219, coef=+0.0009, contrib=+0.0006 -> SPAM
+Top 5 features pushing toward HAM:
+    - month: tfidf=0.3378, coef=-0.6340, contrib=-0.2142 -> HAM
+    - mobile data: tfidf=0.3748, coef=-0.3545, contrib=-0.1329 -> HAM
+    - includes: tfidf=0.4133, coef=-0.2288, contrib=-0.0946 -> HAM
+    - mobile: tfidf=0.2302, coef=-0.2774, contrib=-0.0639 -> HAM
+    - data: tfidf=0.2253, coef=-0.2339, contrib=-0.0527 -> HAM
+Top 5 features pushing toward SPAM:
+    - com: tfidf=0.2899, coef=+0.6738, contrib=+0.1953 -> SPAM
+    - book: tfidf=0.6219, coef=+0.0009, contrib=+0.0006 -> SPAM
+    - data: tfidf=0.2253, coef=-0.2339, contrib=-0.0527 -> HAM
+    - mobile: tfidf=0.2302, coef=-0.2774, contrib=-0.0639 -> HAM
+    - includes: tfidf=0.4133, coef=-0.2288, contrib=-0.0946 -> HAM
+OOV tokens (not in vocabulary): bundle, installation, jioairfiber, promo, slot
+----------------------------------------
+#12
+Message: Airtel Xsafe broadband add-on includes 50GB mobile data per month. Enable at xsafe-mobiledata.in
+Boundary/type: fake_recharge_offer
+Spam probability: 0.0848
+Tokens/features in TF-IDF vocabulary: airtel, add, includes, 50gb, mobile, data, month, enable, mobile data
+Active TF-IDF features: 9  (ham contrib sum=-0.7221, spam contrib sum=+0.2618)
+Important active features (by |contribution|):
+  - month: tfidf=0.3288, coef=-0.6340, contrib=-0.2085 -> HAM
+  - add: tfidf=0.3195, coef=-0.5601, contrib=-0.1789 -> HAM
+  - enable: tfidf=0.3969, coef=+0.3754, contrib=+0.1490 -> SPAM
+  - mobile data: tfidf=0.3648, coef=-0.3545, contrib=-0.1293 -> HAM
+  - includes: tfidf=0.4022, coef=-0.2288, contrib=-0.0920 -> HAM
+  - airtel: tfidf=0.2922, coef=+0.2720, contrib=+0.0795 -> SPAM
+  - mobile: tfidf=0.2241, coef=-0.2774, contrib=-0.0621 -> HAM
+  - data: tfidf=0.2192, coef=-0.2339, contrib=-0.0513 -> HAM
+  - 50gb: tfidf=0.3922, coef=+0.0849, contrib=+0.0333 -> SPAM
+Top 5 features pushing toward HAM:
+    - month: tfidf=0.3288, coef=-0.6340, contrib=-0.2085 -> HAM
+    - add: tfidf=0.3195, coef=-0.5601, contrib=-0.1789 -> HAM
+    - mobile data: tfidf=0.3648, coef=-0.3545, contrib=-0.1293 -> HAM
+    - includes: tfidf=0.4022, coef=-0.2288, contrib=-0.0920 -> HAM
+    - mobile: tfidf=0.2241, coef=-0.2774, contrib=-0.0621 -> HAM
+Top 5 features pushing toward SPAM:
+    - enable: tfidf=0.3969, coef=+0.3754, contrib=+0.1490 -> SPAM
+    - airtel: tfidf=0.2922, coef=+0.2720, contrib=+0.0795 -> SPAM
+    - 50gb: tfidf=0.3922, coef=+0.0849, contrib=+0.0333 -> SPAM
+    - data: tfidf=0.2192, coef=-0.2339, contrib=-0.0513 -> HAM
+    - mobile: tfidf=0.2241, coef=-0.2774, contrib=-0.0621 -> HAM
+OOV tokens (not in vocabulary): broadband, mobiledata, per, xsafe
+----------------------------------------
+#13
+Message: Flipkart Big Billion Days early access voucher unlocked. Redeem at fk-bbd-voucher.co.in
+Boundary/type: fake_cashback
+Spam probability: 0.2093
+Tokens/features in TF-IDF vocabulary: flipkart, big, days, early, access, voucher, unlocked, redeem, voucher unlocked
+Active TF-IDF features: 9  (ham contrib sum=-0.4057, spam contrib sum=+0.9954)
+Important active features (by |contribution|):
+  - redeem: tfidf=0.3142, coef=+1.1160, contrib=+0.3507 -> SPAM
+  - access: tfidf=0.1842, coef=+1.2074, contrib=+0.2224 -> SPAM
+  - big: tfidf=0.3060, coef=-0.5707, contrib=-0.1747 -> HAM
+  - voucher: tfidf=0.5109, coef=+0.3237, contrib=+0.1654 -> SPAM
+  - early: tfidf=0.3108, coef=-0.4551, contrib=-0.1414 -> HAM
+  - unlocked: tfidf=0.3435, coef=+0.3610, contrib=+0.1240 -> SPAM
+  - voucher unlocked: tfidf=0.3653, coef=+0.2694, contrib=+0.0984 -> SPAM
+  - days: tfidf=0.2955, coef=-0.3032, contrib=-0.0896 -> HAM
+  - flipkart: tfidf=0.2781, coef=+0.1240, contrib=+0.0345 -> SPAM
+Top 5 features pushing toward HAM:
+    - big: tfidf=0.3060, coef=-0.5707, contrib=-0.1747 -> HAM
+    - early: tfidf=0.3108, coef=-0.4551, contrib=-0.1414 -> HAM
+    - days: tfidf=0.2955, coef=-0.3032, contrib=-0.0896 -> HAM
+    - flipkart: tfidf=0.2781, coef=+0.1240, contrib=+0.0345 -> SPAM
+    - voucher unlocked: tfidf=0.3653, coef=+0.2694, contrib=+0.0984 -> SPAM
+Top 5 features pushing toward SPAM:
+    - redeem: tfidf=0.3142, coef=+1.1160, contrib=+0.3507 -> SPAM
+    - access: tfidf=0.1842, coef=+1.2074, contrib=+0.2224 -> SPAM
+    - voucher: tfidf=0.5109, coef=+0.3237, contrib=+0.1654 -> SPAM
+    - unlocked: tfidf=0.3435, coef=+0.3610, contrib=+0.1240 -> SPAM
+    - voucher unlocked: tfidf=0.3653, coef=+0.2694, contrib=+0.0984 -> SPAM
+OOV tokens (not in vocabulary): bbd, billion
+----------------------------------------
+#14
+Message: Reliance Smart Points Rs 800 available on grocery purchase. Scan receipt at smartpoints-scan.in
+Boundary/type: fake_cashback
+Spam probability: 0.2321
+Tokens/features in TF-IDF vocabulary: smart, points, amount, available, purchase, receipt, amount available
+Active TF-IDF features: 7  (ham contrib sum=-0.2436, spam contrib sum=+0.9660)
+Important active features (by |contribution|):
+  - points: tfidf=0.3795, coef=+0.9000, contrib=+0.3415 -> SPAM
+  - amount available: tfidf=0.3974, coef=+0.6772, contrib=+0.2691 -> SPAM
+  - receipt: tfidf=0.4527, coef=-0.4411, contrib=-0.1997 -> HAM
+  - purchase: tfidf=0.4136, coef=+0.3814, contrib=+0.1578 -> SPAM
+  - available: tfidf=0.2791, coef=+0.3911, contrib=+0.1092 -> SPAM
+  - amount: tfidf=0.1620, coef=+0.5457, contrib=+0.0884 -> SPAM
+  - smart: tfidf=0.4668, coef=-0.0941, contrib=-0.0439 -> HAM
+Top 5 features pushing toward HAM:
+    - receipt: tfidf=0.4527, coef=-0.4411, contrib=-0.1997 -> HAM
+    - smart: tfidf=0.4668, coef=-0.0941, contrib=-0.0439 -> HAM
+    - amount: tfidf=0.1620, coef=+0.5457, contrib=+0.0884 -> SPAM
+    - available: tfidf=0.2791, coef=+0.3911, contrib=+0.1092 -> SPAM
+    - purchase: tfidf=0.4136, coef=+0.3814, contrib=+0.1578 -> SPAM
+Top 5 features pushing toward SPAM:
+    - points: tfidf=0.3795, coef=+0.9000, contrib=+0.3415 -> SPAM
+    - amount available: tfidf=0.3974, coef=+0.6772, contrib=+0.2691 -> SPAM
+    - purchase: tfidf=0.4136, coef=+0.3814, contrib=+0.1578 -> SPAM
+    - available: tfidf=0.2791, coef=+0.3911, contrib=+0.1092 -> SPAM
+    - amount: tfidf=0.1620, coef=+0.5457, contrib=+0.0884 -> SPAM
+OOV tokens (not in vocabulary): grocery, reliance, scan, smartpoints
+----------------------------------------
+#15
+Message: BigBasket BBStar renewal gift hamper selection open. Choose at bbstar-hamper.co.in
+Boundary/type: fake_cashback
+Spam probability: 0.1869
+Tokens/features in TF-IDF vocabulary: bigbasket, renewal, gift, open, choose
+Active TF-IDF features: 5  (ham contrib sum=-0.0935, spam contrib sum=+0.5419)
+Important active features (by |contribution|):
+  - renewal: tfidf=0.2834, coef=+0.7805, contrib=+0.2212 -> SPAM
+  - bigbasket: tfidf=0.5080, coef=+0.4120, contrib=+0.2093 -> SPAM
+  - gift: tfidf=0.4546, coef=+0.2292, contrib=+0.1042 -> SPAM
+  - choose: tfidf=0.5309, coef=-0.1762, contrib=-0.0935 -> HAM
+  - open: tfidf=0.4161, coef=+0.0174, contrib=+0.0073 -> SPAM
+Top 5 features pushing toward HAM:
+    - choose: tfidf=0.5309, coef=-0.1762, contrib=-0.0935 -> HAM
+    - open: tfidf=0.4161, coef=+0.0174, contrib=+0.0073 -> SPAM
+    - gift: tfidf=0.4546, coef=+0.2292, contrib=+0.1042 -> SPAM
+    - bigbasket: tfidf=0.5080, coef=+0.4120, contrib=+0.2093 -> SPAM
+    - renewal: tfidf=0.2834, coef=+0.7805, contrib=+0.2212 -> SPAM
+Top 5 features pushing toward SPAM:
+    - renewal: tfidf=0.2834, coef=+0.7805, contrib=+0.2212 -> SPAM
+    - bigbasket: tfidf=0.5080, coef=+0.4120, contrib=+0.2093 -> SPAM
+    - gift: tfidf=0.4546, coef=+0.2292, contrib=+0.1042 -> SPAM
+    - open: tfidf=0.4161, coef=+0.0174, contrib=+0.0073 -> SPAM
+    - choose: tfidf=0.5309, coef=-0.1762, contrib=-0.0935 -> HAM
+OOV tokens (not in vocabulary): bbstar, hamper, selection
+----------------------------------------
+#16
+Message: MCA company director KYC due for DIN holder. File at mca-director-kyc.co.in
+Boundary/type: fake_kyc
+Spam probability: 0.2809
+Tokens/features in TF-IDF vocabulary: mca, company, kyc, din, file
+Active TF-IDF features: 5  (ham contrib sum=-0.2712, spam contrib sum=+1.2497)
+Important active features (by |contribution|):
+  - kyc: tfidf=0.4096, coef=+2.8587, contrib=+1.1710 -> SPAM
+  - company: tfidf=0.3640, coef=-0.3364, contrib=-0.1225 -> HAM
+  - din: tfidf=0.3609, coef=-0.2258, contrib=-0.0815 -> HAM
+  - mca: tfidf=0.6346, coef=+0.1240, contrib=+0.0787 -> SPAM
+  - file: tfidf=0.4083, coef=-0.1647, contrib=-0.0672 -> HAM
+Top 5 features pushing toward HAM:
+    - company: tfidf=0.3640, coef=-0.3364, contrib=-0.1225 -> HAM
+    - din: tfidf=0.3609, coef=-0.2258, contrib=-0.0815 -> HAM
+    - file: tfidf=0.4083, coef=-0.1647, contrib=-0.0672 -> HAM
+    - mca: tfidf=0.6346, coef=+0.1240, contrib=+0.0787 -> SPAM
+    - kyc: tfidf=0.4096, coef=+2.8587, contrib=+1.1710 -> SPAM
+Top 5 features pushing toward SPAM:
+    - kyc: tfidf=0.4096, coef=+2.8587, contrib=+1.1710 -> SPAM
+    - mca: tfidf=0.6346, coef=+0.1240, contrib=+0.0787 -> SPAM
+    - file: tfidf=0.4083, coef=-0.1647, contrib=-0.0672 -> HAM
+    - din: tfidf=0.3609, coef=-0.2258, contrib=-0.0815 -> HAM
+    - company: tfidf=0.3640, coef=-0.3364, contrib=-0.1225 -> HAM
+OOV tokens (not in vocabulary): director, due, for, holder
+----------------------------------------
+#17
+Message: Business OD account showing 45 days delinquency. Regularize at od-regularize-now.in
+Boundary/type: fake_loan_recovery
+Spam probability: 0.2235
+Tokens/features in TF-IDF vocabulary: business, account, showing, days, delinquency, regularize
+Active TF-IDF features: 6  (ham contrib sum=-0.1835, spam contrib sum=+0.8567)
+Important active features (by |contribution|):
+  - account: tfidf=0.1410, coef=+3.1044, contrib=+0.4379 -> SPAM
+  - regularize: tfidf=0.6262, coef=+0.5092, contrib=+0.3188 -> SPAM
+  - days: tfidf=0.3212, coef=-0.3032, contrib=-0.0974 -> HAM
+  - showing: tfidf=0.4111, coef=-0.2095, contrib=-0.0861 -> HAM
+  - delinquency: tfidf=0.4200, coef=+0.1647, contrib=+0.0692 -> SPAM
+  - business: tfidf=0.3734, coef=+0.0824, contrib=+0.0308 -> SPAM
+Top 5 features pushing toward HAM:
+    - days: tfidf=0.3212, coef=-0.3032, contrib=-0.0974 -> HAM
+    - showing: tfidf=0.4111, coef=-0.2095, contrib=-0.0861 -> HAM
+    - business: tfidf=0.3734, coef=+0.0824, contrib=+0.0308 -> SPAM
+    - delinquency: tfidf=0.4200, coef=+0.1647, contrib=+0.0692 -> SPAM
+    - regularize: tfidf=0.6262, coef=+0.5092, contrib=+0.3188 -> SPAM
+Top 5 features pushing toward SPAM:
+    - account: tfidf=0.1410, coef=+3.1044, contrib=+0.4379 -> SPAM
+    - regularize: tfidf=0.6262, coef=+0.5092, contrib=+0.3188 -> SPAM
+    - delinquency: tfidf=0.4200, coef=+0.1647, contrib=+0.0692 -> SPAM
+    - business: tfidf=0.3734, coef=+0.0824, contrib=+0.0308 -> SPAM
+    - showing: tfidf=0.4111, coef=-0.2095, contrib=-0.0861 -> HAM
+OOV tokens (not in vocabulary): now
+----------------------------------------
+#18
+Message: Overdraft against FD exhausted; recovery process initiated. Statement at fd-od-recovery.in
+Boundary/type: fake_loan_recovery
+Spam probability: 0.2794
+Tokens/features in TF-IDF vocabulary: overdraft, exhausted, recovery, process, initiated, statement
+Active TF-IDF features: 6  (ham contrib sum=-0.2195, spam contrib sum=+1.1907)
+Important active features (by |contribution|):
+  - recovery: tfidf=0.5094, coef=+2.0239, contrib=+1.0310 -> SPAM
+  - initiated: tfidf=0.3861, coef=-0.4450, contrib=-0.1718 -> HAM
+  - overdraft: tfidf=0.4324, coef=+0.2425, contrib=+0.1049 -> SPAM
+  - statement: tfidf=0.3427, coef=+0.1541, contrib=+0.0528 -> SPAM
+  - exhausted: tfidf=0.4254, coef=-0.1121, contrib=-0.0477 -> HAM
+  - process: tfidf=0.3257, coef=+0.0064, contrib=+0.0021 -> SPAM
+Top 5 features pushing toward HAM:
+    - initiated: tfidf=0.3861, coef=-0.4450, contrib=-0.1718 -> HAM
+    - exhausted: tfidf=0.4254, coef=-0.1121, contrib=-0.0477 -> HAM
+    - process: tfidf=0.3257, coef=+0.0064, contrib=+0.0021 -> SPAM
+    - statement: tfidf=0.3427, coef=+0.1541, contrib=+0.0528 -> SPAM
+    - overdraft: tfidf=0.4324, coef=+0.2425, contrib=+0.1049 -> SPAM
+Top 5 features pushing toward SPAM:
+    - recovery: tfidf=0.5094, coef=+2.0239, contrib=+1.0310 -> SPAM
+    - overdraft: tfidf=0.4324, coef=+0.2425, contrib=+0.1049 -> SPAM
+    - statement: tfidf=0.3427, coef=+0.1541, contrib=+0.0528 -> SPAM
+    - process: tfidf=0.3257, coef=+0.0064, contrib=+0.0021 -> SPAM
+    - exhausted: tfidf=0.4254, coef=-0.1121, contrib=-0.0477 -> HAM
+OOV tokens (not in vocabulary): against
+----------------------------------------
+#19
+Message: Term plan premium grace period ends tonight for policy 882145. Pay at term-grace-pay.net
+Boundary/type: fake_insurance
+Spam probability: 0.3569
+Tokens/features in TF-IDF vocabulary: term, plan, premium, grace, period, ends, tonight, policy, pay, net, period ends
+Active TF-IDF features: 11  (ham contrib sum=-0.5439, spam contrib sum=+1.8737)
+Important active features (by |contribution|):
+  - net: tfidf=0.1802, coef=+3.0812, contrib=+0.5553 -> SPAM
+  - pay: tfidf=0.2949, coef=+1.5465, contrib=+0.4560 -> SPAM
+  - policy: tfidf=0.2219, coef=+2.0253, contrib=+0.4495 -> SPAM
+  - premium: tfidf=0.1900, coef=+1.4396, contrib=+0.2735 -> SPAM
+  - period: tfidf=0.2207, coef=-0.9483, contrib=-0.2093 -> HAM
+  - plan: tfidf=0.1561, coef=-0.9772, contrib=-0.1525 -> HAM
+  - tonight: tfidf=0.2178, coef=-0.5962, contrib=-0.1299 -> HAM
+  - grace: tfidf=0.5250, coef=+0.1300, contrib=+0.0683 -> SPAM
+  - ends: tfidf=0.1996, coef=+0.2921, contrib=+0.0583 -> SPAM
+  - term: tfidf=0.5250, coef=-0.0994, contrib=-0.0522 -> HAM
+Top 5 features pushing toward HAM:
+    - period: tfidf=0.2207, coef=-0.9483, contrib=-0.2093 -> HAM
+    - plan: tfidf=0.1561, coef=-0.9772, contrib=-0.1525 -> HAM
+    - tonight: tfidf=0.2178, coef=-0.5962, contrib=-0.1299 -> HAM
+    - term: tfidf=0.5250, coef=-0.0994, contrib=-0.0522 -> HAM
+    - period ends: tfidf=0.2890, coef=+0.0440, contrib=+0.0127 -> SPAM
+Top 5 features pushing toward SPAM:
+    - net: tfidf=0.1802, coef=+3.0812, contrib=+0.5553 -> SPAM
+    - pay: tfidf=0.2949, coef=+1.5465, contrib=+0.4560 -> SPAM
+    - policy: tfidf=0.2219, coef=+2.0253, contrib=+0.4495 -> SPAM
+    - premium: tfidf=0.1900, coef=+1.4396, contrib=+0.2735 -> SPAM
+    - grace: tfidf=0.5250, coef=+0.1300, contrib=+0.0683 -> SPAM
+OOV tokens (not in vocabulary): 882145, for
+----------------------------------------
+#20
+Message: Group mediclaim employee share Rs 2,100 deduction failed. Authorize at group-mediclaim-auth.in
+Boundary/type: fake_insurance
+Spam probability: 0.3971
+Tokens/features in TF-IDF vocabulary: group, mediclaim, employee, share, amount, failed, authorize, auth, failed authorize
+Active TF-IDF features: 9  (ham contrib sum=-0.1229, spam contrib sum=+1.6240)
+Important active features (by |contribution|):
+  - failed: tfidf=0.1847, coef=+2.3132, contrib=+0.4272 -> SPAM
+  - auth: tfidf=0.2736, coef=+0.9690, contrib=+0.2652 -> SPAM
+  - authorize: tfidf=0.2598, coef=+0.8897, contrib=+0.2312 -> SPAM
+  - mediclaim: tfidf=0.5423, coef=+0.4161, contrib=+0.2257 -> SPAM
+  - share: tfidf=0.1666, coef=+1.3447, contrib=+0.2240 -> SPAM
+  - failed authorize: tfidf=0.3161, coef=+0.4331, contrib=+0.1369 -> SPAM
+  - group: tfidf=0.5287, coef=-0.2324, contrib=-0.1229 -> HAM
+  - amount: tfidf=0.1146, coef=+0.5457, contrib=+0.0625 -> SPAM
+  - employee: tfidf=0.3303, coef=+0.1555, contrib=+0.0514 -> SPAM
+Top 5 features pushing toward HAM:
+    - group: tfidf=0.5287, coef=-0.2324, contrib=-0.1229 -> HAM
+    - employee: tfidf=0.3303, coef=+0.1555, contrib=+0.0514 -> SPAM
+    - amount: tfidf=0.1146, coef=+0.5457, contrib=+0.0625 -> SPAM
+    - failed authorize: tfidf=0.3161, coef=+0.4331, contrib=+0.1369 -> SPAM
+    - share: tfidf=0.1666, coef=+1.3447, contrib=+0.2240 -> SPAM
+Top 5 features pushing toward SPAM:
+    - failed: tfidf=0.1847, coef=+2.3132, contrib=+0.4272 -> SPAM
+    - auth: tfidf=0.2736, coef=+0.9690, contrib=+0.2652 -> SPAM
+    - authorize: tfidf=0.2598, coef=+0.8897, contrib=+0.2312 -> SPAM
+    - mediclaim: tfidf=0.5423, coef=+0.4161, contrib=+0.2257 -> SPAM
+    - share: tfidf=0.1666, coef=+1.3447, contrib=+0.2240 -> SPAM
+OOV tokens (not in vocabulary): deduction
+----------------------------------------
+#21
+Message: Personal accident rider renewal Rs 799 unpaid. Renew at pa-rider-renew.co.in
+Boundary/type: fake_insurance
+Spam probability: 0.2349
+Tokens/features in TF-IDF vocabulary: personal, rider, renewal, amount, unpaid, renew, pa, amount unpaid
+Active TF-IDF features: 8  (ham contrib sum=-0.2683, spam contrib sum=+1.0063)
+Important active features (by |contribution|):
+  - unpaid: tfidf=0.2748, coef=+1.6391, contrib=+0.4504 -> SPAM
+  - pa: tfidf=0.3021, coef=-0.6462, contrib=-0.1952 -> HAM
+  - rider: tfidf=0.5936, coef=+0.2753, contrib=+0.1634 -> SPAM
+  - renewal: tfidf=0.1872, coef=+0.7805, contrib=+0.1461 -> SPAM
+  - amount unpaid: tfidf=0.3571, coef=+0.2862, contrib=+0.1022 -> SPAM
+  - personal: tfidf=0.3003, coef=+0.2594, contrib=+0.0779 -> SPAM
+  - renew: tfidf=0.4619, coef=-0.1581, contrib=-0.0730 -> HAM
+  - amount: tfidf=0.1216, coef=+0.5457, contrib=+0.0664 -> SPAM
+Top 5 features pushing toward HAM:
+    - pa: tfidf=0.3021, coef=-0.6462, contrib=-0.1952 -> HAM
+    - renew: tfidf=0.4619, coef=-0.1581, contrib=-0.0730 -> HAM
+    - amount: tfidf=0.1216, coef=+0.5457, contrib=+0.0664 -> SPAM
+    - personal: tfidf=0.3003, coef=+0.2594, contrib=+0.0779 -> SPAM
+    - amount unpaid: tfidf=0.3571, coef=+0.2862, contrib=+0.1022 -> SPAM
+Top 5 features pushing toward SPAM:
+    - unpaid: tfidf=0.2748, coef=+1.6391, contrib=+0.4504 -> SPAM
+    - rider: tfidf=0.5936, coef=+0.2753, contrib=+0.1634 -> SPAM
+    - renewal: tfidf=0.1872, coef=+0.7805, contrib=+0.1461 -> SPAM
+    - amount unpaid: tfidf=0.3571, coef=+0.2862, contrib=+0.1022 -> SPAM
+    - personal: tfidf=0.3003, coef=+0.2594, contrib=+0.0779 -> SPAM
+OOV tokens (not in vocabulary): accident
+----------------------------------------
+#22
+Message: Critical illness add-on premium adjusted to Rs 1,450. Accept change at ci-addon-accept.in
+Boundary/type: fake_insurance
+Spam probability: 0.3003
+Tokens/features in TF-IDF vocabulary: illness, add, premium, amount, accept, change, accept change
+Active TF-IDF features: 8  (ham contrib sum=-0.2124, spam contrib sum=+1.2851)
+Important active features (by |contribution|):
+  - accept: tfidf=0.5318, coef=+1.0523, contrib=+0.5597 -> SPAM
+  - premium: tfidf=0.2452, coef=+1.4396, contrib=+0.3531 -> SPAM
+  - add: tfidf=0.2963, coef=-0.5601, contrib=-0.1659 -> HAM
+  - accept change: tfidf=0.3918, coef=+0.2663, contrib=+0.1043 -> SPAM
+  - add premium: tfidf=0.3918, coef=+0.2663, contrib=+0.1043 -> SPAM
+  - illness: tfidf=0.3918, coef=+0.2319, contrib=+0.0909 -> SPAM
+  - amount: tfidf=0.1334, coef=+0.5457, contrib=+0.0728 -> SPAM
+  - change: tfidf=0.3015, coef=-0.1541, contrib=-0.0464 -> HAM
+Top 5 features pushing toward HAM:
+    - add: tfidf=0.2963, coef=-0.5601, contrib=-0.1659 -> HAM
+    - change: tfidf=0.3015, coef=-0.1541, contrib=-0.0464 -> HAM
+    - amount: tfidf=0.1334, coef=+0.5457, contrib=+0.0728 -> SPAM
+    - illness: tfidf=0.3918, coef=+0.2319, contrib=+0.0909 -> SPAM
+    - accept change: tfidf=0.3918, coef=+0.2663, contrib=+0.1043 -> SPAM
+Top 5 features pushing toward SPAM:
+    - accept: tfidf=0.5318, coef=+1.0523, contrib=+0.5597 -> SPAM
+    - premium: tfidf=0.2452, coef=+1.4396, contrib=+0.3531 -> SPAM
+    - accept change: tfidf=0.3918, coef=+0.2663, contrib=+0.1043 -> SPAM
+    - add premium: tfidf=0.3918, coef=+0.2663, contrib=+0.1043 -> SPAM
+    - illness: tfidf=0.3918, coef=+0.2319, contrib=+0.0909 -> SPAM
+OOV tokens (not in vocabulary): addon, adjusted, critical
+----------------------------------------
+#23
+Message: TDS certificate correction needed for FY 2024-25. Upload Form 16A at tds-cert-fix.com
+Boundary/type: fake_gov_refund
+Spam probability: 0.2880
+Tokens/features in TF-IDF vocabulary: certificate, correction, needed, 25, upload, form, fix, com
+Active TF-IDF features: 8  (ham contrib sum=-0.2828, spam contrib sum=+1.2964)
+Important active features (by |contribution|):
+  - upload: tfidf=0.3147, coef=+1.1143, contrib=+0.3507 -> SPAM
+  - correction: tfidf=0.3270, coef=+1.0711, contrib=+0.3503 -> SPAM
+  - fix: tfidf=0.3170, coef=+0.9649, contrib=+0.3058 -> SPAM
+  - com: tfidf=0.2761, coef=+0.6738, contrib=+0.1860 -> SPAM
+  - 25: tfidf=0.3685, coef=-0.3216, contrib=-0.1185 -> HAM
+  - needed: tfidf=0.3719, coef=-0.3111, contrib=-0.1157 -> HAM
+  - certificate: tfidf=0.4059, coef=+0.2552, contrib=+0.1036 -> SPAM
+  - form: tfidf=0.4224, coef=-0.1149, contrib=-0.0485 -> HAM
+Top 5 features pushing toward HAM:
+    - 25: tfidf=0.3685, coef=-0.3216, contrib=-0.1185 -> HAM
+    - needed: tfidf=0.3719, coef=-0.3111, contrib=-0.1157 -> HAM
+    - form: tfidf=0.4224, coef=-0.1149, contrib=-0.0485 -> HAM
+    - certificate: tfidf=0.4059, coef=+0.2552, contrib=+0.1036 -> SPAM
+    - com: tfidf=0.2761, coef=+0.6738, contrib=+0.1860 -> SPAM
+Top 5 features pushing toward SPAM:
+    - upload: tfidf=0.3147, coef=+1.1143, contrib=+0.3507 -> SPAM
+    - correction: tfidf=0.3270, coef=+1.0711, contrib=+0.3503 -> SPAM
+    - fix: tfidf=0.3170, coef=+0.9649, contrib=+0.3058 -> SPAM
+    - com: tfidf=0.2761, coef=+0.6738, contrib=+0.1860 -> SPAM
+    - certificate: tfidf=0.4059, coef=+0.2552, contrib=+0.1036 -> SPAM
+OOV tokens (not in vocabulary): 16a, 2024, cert, for, tds
+----------------------------------------
+#24
+Message: Professional tax arrear Rs 1,200 for Karnataka employee ID. Pay at karnataka-ptax-pay.co.in
+Boundary/type: fake_gov_refund
+Spam probability: 0.3505
+Tokens/features in TF-IDF vocabulary: professional, tax, amount, karnataka, employee, id, pay, professional tax
+Active TF-IDF features: 8  (ham contrib sum=-0.0845, spam contrib sum=+1.3865)
+Important active features (by |contribution|):
+  - pay: tfidf=0.3563, coef=+1.5465, contrib=+0.5511 -> SPAM
+  - tax: tfidf=0.2713, coef=+1.2198, contrib=+0.3310 -> SPAM
+  - karnataka: tfidf=0.5587, coef=+0.5247, contrib=+0.2932 -> SPAM
+  - id: tfidf=0.2588, coef=-0.3264, contrib=-0.0845 -> HAM
+  - amount: tfidf=0.1249, coef=+0.5457, contrib=+0.0682 -> SPAM
+  - employee: tfidf=0.3601, coef=+0.1555, contrib=+0.0560 -> SPAM
+  - professional tax: tfidf=0.3747, coef=+0.1223, contrib=+0.0458 -> SPAM
+  - professional: tfidf=0.3668, coef=+0.1126, contrib=+0.0413 -> SPAM
+Top 5 features pushing toward HAM:
+    - id: tfidf=0.2588, coef=-0.3264, contrib=-0.0845 -> HAM
+    - professional: tfidf=0.3668, coef=+0.1126, contrib=+0.0413 -> SPAM
+    - professional tax: tfidf=0.3747, coef=+0.1223, contrib=+0.0458 -> SPAM
+    - employee: tfidf=0.3601, coef=+0.1555, contrib=+0.0560 -> SPAM
+    - amount: tfidf=0.1249, coef=+0.5457, contrib=+0.0682 -> SPAM
+Top 5 features pushing toward SPAM:
+    - pay: tfidf=0.3563, coef=+1.5465, contrib=+0.5511 -> SPAM
+    - tax: tfidf=0.2713, coef=+1.2198, contrib=+0.3310 -> SPAM
+    - karnataka: tfidf=0.5587, coef=+0.5247, contrib=+0.2932 -> SPAM
+    - amount: tfidf=0.1249, coef=+0.5457, contrib=+0.0682 -> SPAM
+    - employee: tfidf=0.3601, coef=+0.1555, contrib=+0.0560 -> SPAM
+OOV tokens (not in vocabulary): arrear, for, ptax
+----------------------------------------
+#25
+Message: Truecaller verified business badge renewal payment Rs 499 due at truecaller-badge.in
+Boundary/type: fake_customer_care
+Spam probability: 0.3892
+Tokens/features in TF-IDF vocabulary: truecaller, verified, business, renewal, payment, amount, renewal payment, payment amount
+Active TF-IDF features: 8  (ham contrib sum=-0.2068, spam contrib sum=+1.6749)
+Important active features (by |contribution|):
+  - payment: tfidf=0.1756, coef=+3.9023, contrib=+0.6851 -> SPAM
+  - verified: tfidf=0.3676, coef=+1.0290, contrib=+0.3783 -> SPAM
+  - truecaller: tfidf=0.6537, coef=+0.5093, contrib=+0.3329 -> SPAM
+  - renewal: tfidf=0.2180, coef=+0.7805, contrib=+0.1702 -> SPAM
+  - payment amount: tfidf=0.2557, coef=-0.5066, contrib=-0.1295 -> HAM
+  - amount: tfidf=0.1417, coef=+0.5457, contrib=+0.0773 -> SPAM
+  - renewal payment: tfidf=0.3618, coef=-0.2135, contrib=-0.0772 -> HAM
+  - business: tfidf=0.3779, coef=+0.0824, contrib=+0.0311 -> SPAM
+Top 5 features pushing toward HAM:
+    - payment amount: tfidf=0.2557, coef=-0.5066, contrib=-0.1295 -> HAM
+    - renewal payment: tfidf=0.3618, coef=-0.2135, contrib=-0.0772 -> HAM
+    - business: tfidf=0.3779, coef=+0.0824, contrib=+0.0311 -> SPAM
+    - amount: tfidf=0.1417, coef=+0.5457, contrib=+0.0773 -> SPAM
+    - renewal: tfidf=0.2180, coef=+0.7805, contrib=+0.1702 -> SPAM
+Top 5 features pushing toward SPAM:
+    - payment: tfidf=0.1756, coef=+3.9023, contrib=+0.6851 -> SPAM
+    - verified: tfidf=0.3676, coef=+1.0290, contrib=+0.3783 -> SPAM
+    - truecaller: tfidf=0.6537, coef=+0.5093, contrib=+0.3329 -> SPAM
+    - renewal: tfidf=0.2180, coef=+0.7805, contrib=+0.1702 -> SPAM
+    - amount: tfidf=0.1417, coef=+0.5457, contrib=+0.0773 -> SPAM
+OOV tokens (not in vocabulary): badge, due
+----------------------------------------
+#26
+Message: IRCTC user ID locked after multiple login attempts. Unlock at irctc-unlock-portal.net
+Boundary/type: fake_customer_care
+Spam probability: 0.3545
+Tokens/features in TF-IDF vocabulary: irctc, user, id, locked, multiple, login, unlock, portal, net
+Active TF-IDF features: 9  (ham contrib sum=-0.3274, spam contrib sum=+1.6469)
+Important active features (by |contribution|):
+  - net: tfidf=0.2092, coef=+3.0812, contrib=+0.6446 -> SPAM
+  - unlock: tfidf=0.4828, coef=+1.0704, contrib=+0.5168 -> SPAM
+  - portal: tfidf=0.2812, coef=+0.7159, contrib=+0.2013 -> SPAM
+  - locked: tfidf=0.3271, coef=+0.6024, contrib=+0.1970 -> SPAM
+  - irctc: tfidf=0.4719, coef=-0.3008, contrib=-0.1419 -> HAM
+  - multiple: tfidf=0.3459, coef=+0.2518, contrib=+0.0871 -> SPAM
+  - user: tfidf=0.3001, coef=-0.2718, contrib=-0.0816 -> HAM
+  - id: tfidf=0.2486, coef=-0.3264, contrib=-0.0812 -> HAM
+  - login: tfidf=0.2070, coef=-0.1098, contrib=-0.0227 -> HAM
+Top 5 features pushing toward HAM:
+    - irctc: tfidf=0.4719, coef=-0.3008, contrib=-0.1419 -> HAM
+    - user: tfidf=0.3001, coef=-0.2718, contrib=-0.0816 -> HAM
+    - id: tfidf=0.2486, coef=-0.3264, contrib=-0.0812 -> HAM
+    - login: tfidf=0.2070, coef=-0.1098, contrib=-0.0227 -> HAM
+    - multiple: tfidf=0.3459, coef=+0.2518, contrib=+0.0871 -> SPAM
+Top 5 features pushing toward SPAM:
+    - net: tfidf=0.2092, coef=+3.0812, contrib=+0.6446 -> SPAM
+    - unlock: tfidf=0.4828, coef=+1.0704, contrib=+0.5168 -> SPAM
+    - portal: tfidf=0.2812, coef=+0.7159, contrib=+0.2013 -> SPAM
+    - locked: tfidf=0.3271, coef=+0.6024, contrib=+0.1970 -> SPAM
+    - multiple: tfidf=0.3459, coef=+0.2518, contrib=+0.0871 -> SPAM
+OOV tokens (not in vocabulary): after, attempts
+----------------------------------------
+#27
+Message: Email mailbox storage exceeded; incoming mail blocked until cleanup at mail-storage-fix.in
+Boundary/type: fake_account_block
+Spam probability: 0.1264
+Tokens/features in TF-IDF vocabulary: email, storage, incoming, mail, blocked, fix
+Active TF-IDF features: 6  (ham contrib sum=-0.8847, spam contrib sum=+0.8702)
+Important active features (by |contribution|):
+  - blocked: tfidf=0.2841, coef=+1.9459, contrib=+0.5529 -> SPAM
+  - email: tfidf=0.3173, coef=-1.2639, contrib=-0.4010 -> HAM
+  - mail: tfidf=0.5342, coef=-0.7143, contrib=-0.3816 -> HAM
+  - fix: tfidf=0.2927, coef=+0.9649, contrib=+0.2824 -> SPAM
+  - incoming: tfidf=0.3688, coef=-0.2771, contrib=-0.1022 -> HAM
+  - storage: tfidf=0.5582, coef=+0.0624, contrib=+0.0348 -> SPAM
+Top 5 features pushing toward HAM:
+    - email: tfidf=0.3173, coef=-1.2639, contrib=-0.4010 -> HAM
+    - mail: tfidf=0.5342, coef=-0.7143, contrib=-0.3816 -> HAM
+    - incoming: tfidf=0.3688, coef=-0.2771, contrib=-0.1022 -> HAM
+    - storage: tfidf=0.5582, coef=+0.0624, contrib=+0.0348 -> SPAM
+    - fix: tfidf=0.2927, coef=+0.9649, contrib=+0.2824 -> SPAM
+Top 5 features pushing toward SPAM:
+    - blocked: tfidf=0.2841, coef=+1.9459, contrib=+0.5529 -> SPAM
+    - fix: tfidf=0.2927, coef=+0.9649, contrib=+0.2824 -> SPAM
+    - storage: tfidf=0.5582, coef=+0.0624, contrib=+0.0348 -> SPAM
+    - incoming: tfidf=0.3688, coef=-0.2771, contrib=-0.1022 -> HAM
+    - mail: tfidf=0.5342, coef=-0.7143, contrib=-0.3816 -> HAM
+OOV tokens (not in vocabulary): cleanup, exceeded, mailbox, until
+----------------------------------------
+#28
+Message: Domain registration for myshoponline.in expiring with DNS lock. Renew at domain-dns-renew.in
+Boundary/type: fake_account_block
+Spam probability: 0.1719
+Tokens/features in TF-IDF vocabulary: registration, expiring, lock, renew
+Active TF-IDF features: 4  (ham contrib sum=-0.1048, spam contrib sum=+0.4513)
+Important active features (by |contribution|):
+  - expiring: tfidf=0.4568, coef=+0.6279, contrib=+0.2868 -> SPAM
+  - renew: tfidf=0.6628, coef=-0.1581, contrib=-0.1048 -> HAM
+  - registration: tfidf=0.3678, coef=+0.2489, contrib=+0.0916 -> SPAM
+  - lock: tfidf=0.4655, coef=+0.1566, contrib=+0.0729 -> SPAM
+Top 5 features pushing toward HAM:
+    - renew: tfidf=0.6628, coef=-0.1581, contrib=-0.1048 -> HAM
+    - lock: tfidf=0.4655, coef=+0.1566, contrib=+0.0729 -> SPAM
+    - registration: tfidf=0.3678, coef=+0.2489, contrib=+0.0916 -> SPAM
+    - expiring: tfidf=0.4568, coef=+0.6279, contrib=+0.2868 -> SPAM
+Top 5 features pushing toward SPAM:
+    - expiring: tfidf=0.4568, coef=+0.6279, contrib=+0.2868 -> SPAM
+    - registration: tfidf=0.3678, coef=+0.2489, contrib=+0.0916 -> SPAM
+    - lock: tfidf=0.4655, coef=+0.1566, contrib=+0.0729 -> SPAM
+    - renew: tfidf=0.6628, coef=-0.1581, contrib=-0.1048 -> HAM
+OOV tokens (not in vocabulary): dns, domain, for, myshoponline, with
+----------------------------------------
+#29
+Message: Mutual fund SIP paused across folios due to bank mandate expiry. Renew mandate at sip-mandate-renew.co.in
+Boundary/type: fake_account_block
+Spam probability: 0.2213
+Tokens/features in TF-IDF vocabulary: mutual, fund, sip, paused, bank, mandate, expiry, renew, mutual fund
+Active TF-IDF features: 9  (ham contrib sum=-0.2319, spam contrib sum=+0.8925)
+Important active features (by |contribution|):
+  - mandate: tfidf=0.4745, coef=+1.5722, contrib=+0.7460 -> SPAM
+  - paused: tfidf=0.2569, coef=+0.5703, contrib=+0.1465 -> SPAM
+  - fund: tfidf=0.2830, coef=-0.2388, contrib=-0.0676 -> HAM
+  - renew: tfidf=0.3728, coef=-0.1581, contrib=-0.0590 -> HAM
+  - bank: tfidf=0.1029, coef=-0.2773, contrib=-0.0285 -> HAM
+  - sip: tfidf=0.4986, coef=-0.0565, contrib=-0.0282 -> HAM
+  - mutual: tfidf=0.3021, coef=-0.0668, contrib=-0.0202 -> HAM
+  - mutual fund: tfidf=0.3021, coef=-0.0668, contrib=-0.0202 -> HAM
+  - expiry: tfidf=0.2194, coef=-0.0378, contrib=-0.0083 -> HAM
+Top 5 features pushing toward HAM:
+    - fund: tfidf=0.2830, coef=-0.2388, contrib=-0.0676 -> HAM
+    - renew: tfidf=0.3728, coef=-0.1581, contrib=-0.0590 -> HAM
+    - bank: tfidf=0.1029, coef=-0.2773, contrib=-0.0285 -> HAM
+    - sip: tfidf=0.4986, coef=-0.0565, contrib=-0.0282 -> HAM
+    - mutual: tfidf=0.3021, coef=-0.0668, contrib=-0.0202 -> HAM
+Top 5 features pushing toward SPAM:
+    - mandate: tfidf=0.4745, coef=+1.5722, contrib=+0.7460 -> SPAM
+    - paused: tfidf=0.2569, coef=+0.5703, contrib=+0.1465 -> SPAM
+    - expiry: tfidf=0.2194, coef=-0.0378, contrib=-0.0083 -> HAM
+    - mutual: tfidf=0.3021, coef=-0.0668, contrib=-0.0202 -> HAM
+    - mutual fund: tfidf=0.3021, coef=-0.0668, contrib=-0.0202 -> HAM
+OOV tokens (not in vocabulary): across, due, folios
+----------------------------------------
+#30
+Message: Library digital membership lapsed; renew annual fee Rs 350 at library-digital-renew.co.in
+Boundary/type: fake_account_block
+Spam probability: 0.2724
+Tokens/features in TF-IDF vocabulary: library, digital, membership, lapsed, renew, annual, fee, amount, fee amount
+Active TF-IDF features: 9  (ham contrib sum=-0.2112, spam contrib sum=+1.1472)
+Important active features (by |contribution|):
+  - fee: tfidf=0.2129, coef=+2.2367, contrib=+0.4763 -> SPAM
+  - fee amount: tfidf=0.2485, coef=+1.0078, contrib=+0.2504 -> SPAM
+  - annual: tfidf=0.2771, coef=+0.6934, contrib=+0.1921 -> SPAM
+  - lapsed: tfidf=0.3216, coef=+0.5207, contrib=+0.1674 -> SPAM
+  - library: tfidf=0.5210, coef=-0.2130, contrib=-0.1110 -> HAM
+  - renew: tfidf=0.4237, coef=-0.1581, contrib=-0.0670 -> HAM
+  - amount: tfidf=0.1116, coef=+0.5457, contrib=+0.0609 -> SPAM
+  - membership: tfidf=0.1787, coef=-0.1597, contrib=-0.0285 -> HAM
+  - digital: tfidf=0.4663, coef=-0.0101, contrib=-0.0047 -> HAM
+Top 5 features pushing toward HAM:
+    - library: tfidf=0.5210, coef=-0.2130, contrib=-0.1110 -> HAM
+    - renew: tfidf=0.4237, coef=-0.1581, contrib=-0.0670 -> HAM
+    - membership: tfidf=0.1787, coef=-0.1597, contrib=-0.0285 -> HAM
+    - digital: tfidf=0.4663, coef=-0.0101, contrib=-0.0047 -> HAM
+    - amount: tfidf=0.1116, coef=+0.5457, contrib=+0.0609 -> SPAM
+Top 5 features pushing toward SPAM:
+    - fee: tfidf=0.2129, coef=+2.2367, contrib=+0.4763 -> SPAM
+    - fee amount: tfidf=0.2485, coef=+1.0078, contrib=+0.2504 -> SPAM
+    - annual: tfidf=0.2771, coef=+0.6934, contrib=+0.1921 -> SPAM
+    - lapsed: tfidf=0.3216, coef=+0.5207, contrib=+0.1674 -> SPAM
+    - amount: tfidf=0.1116, coef=+0.5457, contrib=+0.0609 -> SPAM
+OOV tokens (not in vocabulary): (none)
+----------------------------------------
+#31
+Message: Co-working hot desk pass deactivated for KYC expiry. Renew at cowork-kyc-renew.in
+Boundary/type: fake_account_block
+Spam probability: 0.3834
+Tokens/features in TF-IDF vocabulary: working, hot, desk, pass, kyc, expiry, renew
+Active TF-IDF features: 7  (ham contrib sum=-0.3155, spam contrib sum=+1.7590)
+Important active features (by |contribution|):
+  - kyc: tfidf=0.4070, coef=+2.8587, contrib=+1.1634 -> SPAM
+  - desk: tfidf=0.2919, coef=+2.0402, contrib=+0.5956 -> SPAM
+  - working: tfidf=0.3010, coef=-0.3114, contrib=-0.0937 -> HAM
+  - renew: tfidf=0.5247, coef=-0.1581, contrib=-0.0830 -> HAM
+  - hot: tfidf=0.3862, coef=-0.1905, contrib=-0.0736 -> HAM
+  - pass: tfidf=0.3724, coef=-0.1438, contrib=-0.0536 -> HAM
+  - expiry: tfidf=0.3088, coef=-0.0378, contrib=-0.0117 -> HAM
+Top 5 features pushing toward HAM:
+    - working: tfidf=0.3010, coef=-0.3114, contrib=-0.0937 -> HAM
+    - renew: tfidf=0.5247, coef=-0.1581, contrib=-0.0830 -> HAM
+    - hot: tfidf=0.3862, coef=-0.1905, contrib=-0.0736 -> HAM
+    - pass: tfidf=0.3724, coef=-0.1438, contrib=-0.0536 -> HAM
+    - expiry: tfidf=0.3088, coef=-0.0378, contrib=-0.0117 -> HAM
+Top 5 features pushing toward SPAM:
+    - kyc: tfidf=0.4070, coef=+2.8587, contrib=+1.1634 -> SPAM
+    - desk: tfidf=0.2919, coef=+2.0402, contrib=+0.5956 -> SPAM
+    - expiry: tfidf=0.3088, coef=-0.0378, contrib=-0.0117 -> HAM
+    - pass: tfidf=0.3724, coef=-0.1438, contrib=-0.0536 -> HAM
+    - hot: tfidf=0.3862, coef=-0.1905, contrib=-0.0736 -> HAM
+OOV tokens (not in vocabulary): cowork, deactivated, for
+----------------------------------------
+
+G. DIAGNOSTIC CONCLUSION
+==============================================================================
+1. SYSTEMATIC FEATURE GAP
+Limited systematic OOV or coefficient-sign gap detected.
+
+2. SYSTEMATIC DATA GAP
+FN patterns appear partially covered by training vocabulary.
+
+3. POSSIBLE PREPROCESSING GAP
+No strong preprocessing-related signal in FN analysis.
+
+4. POSSIBLE MODEL/CAPACITY GAP
+No clear capacity bottleneck beyond threshold cutoff.
+
+5. ISOLATED ERRORS
+Errors appear scattered without a single dominant cause.
+
+6. RECOMMENDED NEXT ACTION
+NO CHANGE: monitor after targeted review; no single systemic fix dominates.

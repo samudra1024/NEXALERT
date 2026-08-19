@@ -1,0 +1,21 @@
+UNSEEN BOUNDARY TEST V2 — AUDIT REPORT
+==================================================
+Total valid messages: 400
+SPAM count: 200
+HAM count: 200
+HAM category counts:
+  banking: 40
+  otp: 40
+  personal: 40
+  recharge_data: 40
+  subscription: 40
+
+Exact duplicates removed: 0
+Normalized duplicates removed: 0
+Template duplicates removed: 0
+Placeholder inconsistencies: 0
+Invalid labels: 0
+Invalid HAM categories: 0
+Semantic boundary issues flagged: 0 (manual review passed)
+
+Output: C:\Users\xxtri\Desktop\NexAlert\ml\data\unseen_boundary_test_v2.csv

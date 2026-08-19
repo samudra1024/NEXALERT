@@ -4,6 +4,7 @@ Handles model training, threshold tuning, and artifact saving.
 """
 
 import logging
+import json
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -13,6 +14,7 @@ from ml.model.config import (
     TFIDF_CONFIG,
     LR_CONFIG,
     THRESHOLD_CONFIG,
+    PRODUCTION_THRESHOLD,
     RANDOM_SEED,
     ARTIFACTS_DIR,
 )
@@ -146,7 +148,7 @@ def tune_threshold(
         logger.info(f"{thresh:<12.3f} {rec:<12.4f} {prec:<12.4f} {status}")
     
     logger.info("-" * 70)
-    logger.info(f"\n✅ SELECTED THRESHOLD: {best_threshold:.3f}")
+    logger.info(f"\n✅ VALIDATION-TUNED THRESHOLD (analysis only): {best_threshold:.3f}")
     logger.info(f"   Spam Recall:    {best_recall:.4f} ({best_recall*100:.2f}%)")
     logger.info(f"   Spam Precision: {best_precision:.4f} ({best_precision*100:.2f}%)")
     
@@ -256,7 +258,7 @@ def train_model() -> dict:
     logger.info("STEP 4: THRESHOLD TUNING (VALIDATION SET)")
     logger.info("=" * 70)
     
-    optimal_threshold = tune_threshold(model, vectorizer, X_val, y_val)
+    validation_threshold = tune_threshold(model, vectorizer, X_val, y_val)
     
     # ==========================================================================
     # STEP 5: Save Artifacts
@@ -265,11 +267,21 @@ def train_model() -> dict:
     logger.info("STEP 5: SAVING MODEL ARTIFACTS")
     logger.info("=" * 70)
     
-    save_model(model, vectorizer, optimal_threshold, use_bundle=True)
+    logger.info(
+        f"Validation-tuned threshold (analysis only): {validation_threshold:.3f}"
+    )
+    logger.info(f"Frozen production threshold: {PRODUCTION_THRESHOLD:.3f}")
+    
+    save_model(model, vectorizer, PRODUCTION_THRESHOLD, use_bundle=True)
+    
+    validation_threshold_path = ARTIFACTS_DIR / "validation_threshold.json"
+    with open(validation_threshold_path, "w") as f:
+        json.dump({"validation_tuned_threshold": validation_threshold}, f)
+    logger.info(f"✓ Saved validation threshold to {validation_threshold_path}")
     
     logger.info(f"\n✅ Model artifacts saved to: {ARTIFACTS_DIR}")
-    logger.info("   - model_bundle.pkl (contains model, vectorizer, threshold)")
-    logger.info("   - threshold.json (Optimal decision threshold)")
+    logger.info("   - model_bundle.pkl (contains model, vectorizer, production threshold)")
+    logger.info("   - threshold.json (Frozen production threshold)")
     
     # ==========================================================================
     # Summary
@@ -283,7 +295,8 @@ def train_model() -> dict:
     logger.info(f"   ✓ Validation samples: {len(X_val)}")
     logger.info(f"   ✓ Test samples: {len(X_test)} (held out for evaluation)")
     logger.info(f"   ✓ Features: {X_train_tfidf.shape[1]}")
-    logger.info(f"   ✓ Optimal threshold: {optimal_threshold:.3f}")
+    logger.info(f"   ✓ Validation-tuned threshold (analysis): {validation_threshold:.3f}")
+    logger.info(f"   ✓ Production threshold (frozen): {PRODUCTION_THRESHOLD:.3f}")
     logger.info(f"   ✓ Training accuracy: {train_accuracy:.4f}")
     
     logger.info("\n⚠️  NEXT STEP: Run evaluate.py to assess test set performance")
@@ -293,7 +306,9 @@ def train_model() -> dict:
     return {
         'model': model,
         'vectorizer': vectorizer,
-        'threshold': optimal_threshold,
+        'validation_tuned_threshold': validation_threshold,
+        'production_threshold': PRODUCTION_THRESHOLD,
+        'threshold': PRODUCTION_THRESHOLD,
         'train_accuracy': train_accuracy,
         'X_train_shape': X_train_tfidf.shape,
     }

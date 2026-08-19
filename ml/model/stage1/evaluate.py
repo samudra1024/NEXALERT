@@ -4,6 +4,7 @@ Performs final evaluation on the held-out test set ONLY ONCE.
 """
 
 import logging
+import json
 import numpy as np
 
 from ml.model.config import DATASET_PATH, ARTIFACTS_DIR, TRAIN_SIZE, VAL_SIZE, TEST_SIZE, RANDOM_SEED
@@ -129,8 +130,16 @@ def evaluate_on_test_set() -> dict:
     
     metrics = compute_metrics(y_test, y_pred)
     
-    # Add threshold info
+    # Distinguish frozen production threshold from validation-tuned analysis threshold
+    metrics['production_threshold'] = threshold
     metrics['threshold'] = threshold
+    validation_threshold_path = ARTIFACTS_DIR / "validation_threshold.json"
+    if validation_threshold_path.exists():
+        with open(validation_threshold_path, "r") as f:
+            validation_data = json.load(f)
+        metrics['validation_tuned_threshold'] = validation_data.get(
+            "validation_tuned_threshold"
+        )
     metrics['model_type'] = 'Logistic Regression'
     metrics['vectorizer_type'] = 'TF-IDF'
     

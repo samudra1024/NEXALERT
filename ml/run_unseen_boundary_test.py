@@ -403,6 +403,48 @@ def main() -> int:
     print(cm_s1)
     print()
 
+    false_positive_rows = [
+        (case, pred)
+        for case, pred in stage1_rows
+        if case.expected_label == "ham" and pred["label"] == "spam"
+    ]
+
+    print("STAGE 1 FALSE POSITIVES — MISCLASSIFIED HAM")
+    print("-" * 70)
+
+    for i, (case, pred) in enumerate(false_positive_rows, 1):
+        print(f"#{i}")
+        print(f"Message: {case.text}")
+        print(f"Expected: {case.expected_label}")
+        print(f"Predicted: {pred['label']}")
+        print(f"Spam probability: {pred['spam_probability']:.4f}")
+        print(f"Category: {case.expected_category}")
+        print(f"Boundary/type: {case.boundary_type}")
+        print("-" * 40)
+
+    print()
+
+    false_negative_rows = [
+        (case, pred)
+        for case, pred in stage1_rows
+        if case.expected_label == "spam" and pred["label"] == "ham"
+    ]
+
+    print("STAGE 1 FALSE NEGATIVES — MISSED SPAM")
+    print("-" * 70)
+
+    for i, (case, pred) in enumerate(false_negative_rows, 1):
+        print(f"#{i}")
+        print(f"Message: {case.text}")
+        print(f"Expected: {case.expected_label}")
+        print(f"Predicted: {pred['label']}")
+        print(f"Spam probability: {pred['spam_probability']:.4f}")
+        print(f"Boundary/type: {case.boundary_type}")
+        print("-" * 40)
+
+    print(f"Total missed spam messages: {len(false_negative_rows)}")
+    print()
+
     ham_cases = [case for case in cases if case.expected_label == "ham"]
     y_true_s2 = []
     y_pred_s2 = []

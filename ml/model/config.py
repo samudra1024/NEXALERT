@@ -50,10 +50,16 @@ PREPROCESSING_CONFIG = {
 # =============================================================================
 # TF-IDF VECTORIZER CONFIGURATION
 # =============================================================================
+from sklearn.feature_extraction.text import ENGLISH_STOP_WORDS
+
+# Keep sklearn English stop words but retain "amount", which is emitted by
+# preprocess_text() monetary normalization (<amount> -> token "amount").
+STAGE1_STOP_WORDS = sorted(ENGLISH_STOP_WORDS - {"amount"})
+
 TFIDF_CONFIG = {
     'max_features': 5000,          # Maximum vocabulary size
     'ngram_range': (1, 2),         # Unigrams and bigrams
-    'stop_words': 'english',       # Remove English stop words
+    'stop_words': STAGE1_STOP_WORDS,
     'min_df': 2,                   # Ignore terms that appear in fewer than 2 documents
     'max_df': 0.95,                # Ignore terms that appear in more than 95% of documents
     'sublinear_tf': True,          # Apply sublinear tf scaling (1 + log(tf))
@@ -79,6 +85,9 @@ THRESHOLD_CONFIG = {
     'thresholds': np.linspace(0.25, 0.40, 10).tolist(),  # [0.25, 0.267, 0.283, ..., 0.40]
     'min_precision': 0.80,          # Minimum acceptable precision constraint
 }
+
+# Frozen Stage 1 production/evaluation threshold (not overwritten by validation tuning)
+PRODUCTION_THRESHOLD = 0.400
 
 # =============================================================================
 # LABEL ENCODING
