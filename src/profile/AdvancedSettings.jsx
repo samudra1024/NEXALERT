@@ -5,12 +5,12 @@ import {
     StyleSheet,
     TouchableOpacity,
     Modal,
-    StatusBar,
-    ScrollView // Added ScrollView
+    ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Animated, { ZoomIn, FadeOut } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
+import { ScreenContainer } from '../components/ScreenContainer';
 
 export default function AdvancedSettings() {
     const { theme } = useTheme();
@@ -34,9 +34,11 @@ export default function AdvancedSettings() {
     );
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+        <ScreenContainer
+            backgroundColor={theme.background}
+            statusBarStyle={theme.statusBar}
+            statusBarBackgroundColor={theme.statusBg}
+        >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
@@ -91,7 +93,7 @@ export default function AdvancedSettings() {
                     </Animated.View>
                 </View>
             </Modal>
-        </View>
+        </ScreenContainer>
     );
 }
 

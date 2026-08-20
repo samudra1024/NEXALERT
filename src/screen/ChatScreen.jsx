@@ -1,48 +1,134 @@
 // screens/ChatScreen.js
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, memo, useMemo } from "react";
 import {
   View,
   Text,
-  FlatList,
   TextInput,
   TouchableOpacity,
   Alert,
   StyleSheet,
-  StatusBar,
   KeyboardAvoidingView,
   Platform,
   Keyboard,
-  Animated,
   Modal,
   Image,
+  ActivityIndicator,
+  InteractionManager,
+  Clipboard,
+  Share,
 } from "react-native";
+import OptimizedList from '../components/OptimizedList';
 import {
-  PinchGestureHandler,
-  State,
   TouchableWithoutFeedback
 } from 'react-native-gesture-handler';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import SmsController from '../../Controller/SmsController';
 import { useTheme } from '../context/ThemeContext';
-import { useSettings } from '../context/SettingsContext';
-// Re-import Animated to ensure we have the correct one for gestures if needed, 
-// though we usually use react-native-reanimated for this.
-// Assuming Animated from react-native is already imported, we might need Reanimated for smoother zoom.
-import { useSharedValue, useAnimatedStyle, withSpring, FadeInUp, FadeInRight, FadeInLeft, useAnimatedGestureHandler } from 'react-native-reanimated';
-import Reanimated from 'react-native-reanimated';
 import ScalePressable from '../components/animations/ScalePressable';
-import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Image as ImageIcon } from 'lucide-react-native';
+import { MessageSkeleton } from '../components/SkeletonLoader';
+import { ScreenContainer, useSafeAreaInsets } from '../components/ScreenContainer';
+import useSmsEvents from '../hooks/useSmsEvents';
+import { phonesMatch } from '../utils/contactUtils';
+import { ArrowLeft, MoreVertical, Search, Edit2, Trash2, X, Check, Paperclip, Copy, Share2 } from 'lucide-react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 
 // In-memory cache for chat messages
 const chatCache = {};
 
+const shouldShowDateSeparator = (currentMessage, previousMessage) => {
+  if (!previousMessage) return true;
+
+  const currentDate = new Date(currentMessage.date);
+  const previousDate = new Date(previousMessage.date);
+
+  return !(
+    currentDate.getDate() === previousDate.getDate() &&
+    currentDate.getMonth() === previousDate.getMonth() &&
+    currentDate.getFullYear() === previousDate.getFullYear()
+  );
+};
+
+const MessageBubble = memo(function MessageBubble({
+  item,
+  previousItem,
+  theme,
+  isSelected,
+  onLongPress,
+  onPress,
+}) {
+  const showDate = shouldShowDateSeparator(item, previousItem);
+  const date = new Date(item.date);
+  const today = new Date();
+  const isToday =
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear();
+
+  return (
+    <View>
+      {showDate && !isToday && (
+        <View style={{ alignItems: 'center', marginVertical: 12 }}>
+          <View style={{ backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
+            <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '500' }}>
+              {date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+            </Text>
+          </View>
+        </View>
+      )}
+      <View style={{ marginBottom: 4 }}>
+        <TouchableWithoutFeedback
+          onLongPress={() => onLongPress(item)}
+          onPress={() => onPress(item)}
+          delayLongPress={300}
+        >
+          <View
+            style={[
+              styles.messageContainer,
+              item.sender === "me"
+                ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
+                : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }],
+              isSelected && { backgroundColor: theme.primary + '80', borderColor: theme.primary, borderWidth: 1 }
+            ]}>
+            {item.imageUri ? (
+              <Image
+                source={{ uri: item.imageUri }}
+                style={{ width: 200, height: 200, borderRadius: 8, marginBottom: 4 }}
+                resizeMode="cover"
+              />
+            ) : null}
+            <Text style={[
+              styles.messageText,
+              item.sender === "me"
+                ? [styles.myMessageText, { color: theme.chatMyText }]
+                : [styles.otherMessageText, { color: theme.chatOtherText }]
+            ]}>
+              {item.text}
+            </Text>
+            <View style={styles.messageFooter}>
+              <Text style={[
+                styles.timeText,
+                item.sender === "me"
+                  ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
+                  : [styles.otherTimeText, { color: theme.textSecondary }]
+              ]}>
+                {item.time}
+                {item.isEdited ? <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text> : null}
+              </Text>
+            </View>
+            {isSelected ? <Check size={14} color={theme.text} style={{ marginLeft: 8 }} /> : null}
+          </View>
+        </TouchableWithoutFeedback>
+      </View>
+    </View>
+  );
+});
+
 export default function ChatScreen() {
   const { theme } = useTheme();
-  const { settings } = useSettings();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute();
-  const { contactId, name } = route.params || {};
+  const { contactId, name, initialBody } = route.params || {};
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -55,29 +141,11 @@ export default function ChatScreen() {
   const isSelectionMode = selectedMessages.length > 0;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const flatListRef = useRef(null);
-  const buttonScale = useRef(new Animated.Value(1)).current;
   const messagesLoaded = useRef(false);
-
-  // Zoom State
-  const scale = useSharedValue(1);
-  const onPinchEvent = useAnimatedGestureHandler({
-    onActive: (event) => {
-      if (settings.pinchToZoom) {
-        scale.value = event.scale;
-      }
-    },
-    onEnd: () => {
-      scale.value = withSpring(1);
-    }
-  });
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }]
-    };
-  });
-
-  // New UI States for Header
+  const loadingMoreRef = useRef(false);
+  const loadOlderGateRef = useRef(false);
+  const pageRef = useRef(1);
+  const hasScrolledToBottom = useRef(false);
   const [isProfileMenuVisible, setIsProfileMenuVisible] = useState(false);
   const [isSearchVisible, setIsSearchVisible] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -89,98 +157,153 @@ export default function ChatScreen() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
 
 
-  const loadSmsMessages = React.useCallback(async (refresh = false, nextPage = 1) => {
+  const loadSmsMessages = useCallback(async (refresh = false, nextPage = 1) => {
     if (!contactId) return;
+    if (loadingMoreRef.current && nextPage > 1) return;
 
-    // Check cache first if not refreshing and page 1
+    if (refresh) {
+      delete chatCache[contactId];
+      messagesLoaded.current = false;
+    }
+
     if (!refresh && nextPage === 1 && chatCache[contactId]) {
       setMessages(chatCache[contactId].messages);
-      // We proceed to background refresh starred status or just rely on cache
+      setHasMore(chatCache[contactId].hasMore ?? true);
+      const cachedPage = chatCache[contactId].page ?? 1;
+      setPage(cachedPage);
+      pageRef.current = cachedPage;
+      messagesLoaded.current = true;
+      setInitialLoading(false);
+      return;
     }
 
     if (nextPage > 1) {
+      loadingMoreRef.current = true;
       setLoadingMore(true);
     }
 
     try {
       const result = await SmsController.getChatMessages(contactId, nextPage);
-      const starredIds = await SmsController.getStarredMessages();
-
-      const processMessages = (msgs) => msgs.map(m => ({
+      const processedNew = result.messages.map(m => ({
         ...m,
-        starred: starredIds.includes(m.id)
-      }));
-
-      const processedNew = processMessages(result.messages);
+        id: m._id || m.id,
+        text: m.body || m.text,
+        sender: parseInt(m.type, 10) === 2 ? 'me' : 'other',
+        time: new Date(m.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        starred: false,
+      })).sort((a, b) => a.date - b.date);
 
       if (nextPage === 1) {
         setMessages(processedNew);
+        chatCache[contactId] = {
+          messages: processedNew,
+          hasMore: result.hasMore,
+          page: result.page,
+        };
+        messagesLoaded.current = true;
       } else {
         setMessages(prev => {
-          return [...processedNew, ...prev];
+          const existingIds = new Set(prev.map(m => m.id));
+          const olderMessages = processedNew.filter(m => !existingIds.has(m.id));
+          if (olderMessages.length === 0) {
+            setHasMore(false);
+            return prev;
+          }
+          const merged = [...olderMessages, ...prev];
+          chatCache[contactId] = {
+            messages: merged,
+            hasMore: result.hasMore,
+            page: result.page,
+          };
+          return merged;
         });
       }
 
       setHasMore(result.hasMore);
       setPage(result.page);
-
-      if (nextPage === 1) {
-        chatCache[contactId] = { messages: processedNew };
-        messagesLoaded.current = true;
-      }
-
+      pageRef.current = result.page;
     } catch (error) {
       console.error(error);
-      Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
+      if (nextPage === 1) {
+        Alert.alert('Error', 'Failed to fetch SMS messages: ' + error.message);
+      }
     } finally {
+      loadingMoreRef.current = false;
       setLoadingMore(false);
+      if (nextPage === 1) setInitialLoading(false);
     }
   }, [contactId]);
 
   useEffect(() => {
-    if (!messagesLoaded.current) {
-      loadSmsMessages();
+    messagesLoaded.current = false;
+    hasScrolledToBottom.current = false;
+    setMessages([]);
+    setPage(1);
+    pageRef.current = 1;
+    setHasMore(true);
+    setSelectedMessages([]);
+    setInput(initialBody || '');
+    setInitialLoading(true);
 
-      // Mark messages as read
-      if (contactId) {
-        SmsController.markAsRead(contactId).catch(error => {
-          console.error('Error marking as read:', error);
-        });
+    SmsController.getDraft(contactId).then(draft => {
+      if (draft && !initialBody) {
+        setInput(draft);
       }
+    });
+  }, [contactId, initialBody]);
+
+  const handleIncomingSms = useCallback((smsData) => {
+    if (!contactId || !smsData?.sender) {
+      return;
     }
-  }, [loadSmsMessages, contactId]);
 
-  const animateButton = () => {
-    Animated.sequence([
-      Animated.timing(buttonScale, {
-        toValue: 0.9,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(buttonScale, {
-        toValue: 1,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
+    if (!phonesMatch(smsData.sender, contactId)) {
+      return;
+    }
 
-  const handleSelectMessage = (messageId) => {
+    delete chatCache[contactId];
+    messagesLoaded.current = false;
+    hasScrolledToBottom.current = false;
+    loadSmsMessages(true, 1);
+  }, [contactId, loadSmsMessages]);
+
+  useSmsEvents(handleIncomingSms);
+
+  useFocusEffect(
+    useCallback(() => {
+      hasScrolledToBottom.current = false;
+
+      const task = InteractionManager.runAfterInteractions(() => {
+        loadSmsMessages(false, 1);
+        if (contactId) {
+          SmsController.markAsRead(contactId).catch(error => {
+            console.error('Error marking as read:', error);
+          });
+        }
+      });
+
+      return () => task.cancel();
+    }, [contactId, loadSmsMessages]),
+  );
+
+  const handleSelectMessage = useCallback((messageId) => {
     setSelectedMessages(prev => {
       if (prev.includes(messageId)) {
         return prev.filter(id => id !== messageId);
-      } else {
-        return [...prev, messageId];
       }
+      return [...prev, messageId];
     });
-  };
+  }, []);
 
-  const handleLongPress = React.useCallback((message) => {
-    // If we are already editing, don't allow selection? Or just switch modes.
-    // For now, let's allow selection to override or coexist.
-    // Use callback ref or access state directly if stable.
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessage(null);
+    setInput("");
+  }, []);
+
+  const handleLongPress = useCallback((message) => {
     if (!isSelectionMode) {
       if (editingMessage) {
         handleCancelEdit();
@@ -189,13 +312,83 @@ export default function ChatScreen() {
     } else {
       handleSelectMessage(message.id);
     }
-  }, [isSelectionMode, editingMessage, selectedMessages]);
+  }, [isSelectionMode, editingMessage, handleSelectMessage, handleCancelEdit]);
 
-  const handleMessagePress = React.useCallback((message) => {
+  const handleMessagePress = useCallback((message) => {
     if (isSelectionMode) {
       handleSelectMessage(message.id);
     }
-  }, [isSelectionMode]);
+  }, [isSelectionMode, handleSelectMessage]);
+
+  const handleDeleteChat = () => {
+    Alert.alert('Delete conversation?', 'All messages with this contact will be deleted.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          await SmsController.deleteConversation(contactId);
+          delete chatCache[contactId];
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
+  const handleBlockContact = () => {
+    Alert.alert('Block contact?', `Block messages from ${name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Block',
+        style: 'destructive',
+        onPress: async () => {
+          await SmsController.blockNumber(contactId);
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
+  const handleMarkUnread = async () => {
+    await SmsController.markAsUnread(contactId);
+    Alert.alert('Marked as unread');
+    navigation.goBack();
+  };
+
+  const handleCopySelected = () => {
+    const text = messages
+      .filter(m => selectedMessages.includes(m.id))
+      .map(m => m.text)
+      .join('\n');
+    Clipboard.setString(text);
+    setSelectedMessages([]);
+  };
+
+  const handleForwardSelected = () => {
+    const text = messages
+      .filter(m => selectedMessages.includes(m.id))
+      .map(m => m.text)
+      .join('\n');
+    Share.share({ message: text });
+    setSelectedMessages([]);
+  };
+
+  const filteredMessages = useMemo(() => {
+    if (!searchText.trim()) {
+      return messages;
+    }
+    const lower = searchText.toLowerCase();
+    return messages.filter(m => (m.text || '').toLowerCase().includes(lower));
+  }, [messages, searchText]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (contactId) {
+        SmsController.saveDraft(contactId, input);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [input, contactId]);
 
   const handleDeleteSelected = async () => {
     Alert.alert(
@@ -232,19 +425,17 @@ export default function ChatScreen() {
     }
   };
 
-  const handleCancelEdit = () => {
-    setEditingMessage(null);
-    setInput("");
-  };
-
   const handleUpdateMessage = () => {
     if (input.trim().length > 0 && editingMessage) {
       const updatedMessages = messages.map(msg =>
         msg.id === editingMessage.id ? { ...msg, text: input.trim(), isEdited: true } : msg
       );
       setMessages(updatedMessages);
-      // Update cache
-      chatCache[contactId] = updatedMessages;
+      chatCache[contactId] = {
+        messages: updatedMessages,
+        hasMore,
+        page,
+      };
 
       handleCancelEdit();
     }
@@ -292,19 +483,19 @@ export default function ChatScreen() {
     }
   };
 
-  const sendMessage = React.useCallback(async () => {
+  const sendMessage = useCallback(async () => {
     if (input.trim().length > 0 && !sending) {
       if (editingMessage) {
         handleUpdateMessage();
         return;
       }
 
-      animateButton();
       setSending(true);
       try {
         await SmsController.sendSms(contactId, input.trim());
         setInput("");
-        // Force refresh to get new message
+        delete chatCache[contactId];
+        messagesLoaded.current = false;
         await loadSmsMessages(true, 1);
       } catch (error) {
         Alert.alert('Error', 'Failed to send SMS: ' + error.message);
@@ -312,126 +503,59 @@ export default function ChatScreen() {
         setSending(false);
       }
     }
-  }, [input, contactId, sending, loadSmsMessages, buttonScale]);
+  }, [input, contactId, sending, loadSmsMessages, editingMessage]);
 
-  const shouldShowDateSeparator = (currentMessage, previousMessage) => {
-    if (!previousMessage) return true; // First message always shows date
+  const selectedMessageSet = useMemo(
+    () => new Set(selectedMessages),
+    [selectedMessages],
+  );
 
-    const currentDate = new Date(currentMessage.date);
-    const previousDate = new Date(previousMessage.date);
+  const renderMessage = useCallback(({ item, index }) => (
+    <MessageBubble
+      item={item}
+      previousItem={index > 0 ? messages[index - 1] : null}
+      theme={theme}
+      isSelected={selectedMessageSet.has(item.id)}
+      onLongPress={handleLongPress}
+      onPress={handleMessagePress}
+    />
+  ), [messages, theme, selectedMessageSet, handleLongPress, handleMessagePress]);
 
-    // If same day, don't show separator
-    if (
-      currentDate.getDate() === previousDate.getDate() &&
-      currentDate.getMonth() === previousDate.getMonth() &&
-      currentDate.getFullYear() === previousDate.getFullYear()
-    ) {
-      return false;
+  const handleLoadOlder = useCallback(() => {
+    if (!hasMore || loadingMoreRef.current || loadOlderGateRef.current) {
+      return;
     }
+    loadOlderGateRef.current = true;
+    loadSmsMessages(false, pageRef.current + 1).finally(() => {
+      setTimeout(() => {
+        loadOlderGateRef.current = false;
+      }, 400);
+    });
+  }, [hasMore, loadSmsMessages]);
 
-    return true;
-  };
+  const msgKeyExtractor = useCallback((item) => String(item.id), []);
 
-  const renderDateSeparator = (dateTimestamp) => {
-    const date = new Date(dateTimestamp);
-    const today = new Date();
-    const isToday =
-      date.getDate() === today.getDate() &&
-      date.getMonth() === today.getMonth() &&
-      date.getFullYear() === today.getFullYear();
-
-    // Don't show separator for today's messages
-    if (isToday) return null;
-
-    return (
-      <View style={{ alignItems: 'center', marginVertical: 12 }}>
-        <View style={{ backgroundColor: theme.surface, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: theme.border }}>
-          <Text style={{ color: theme.textSecondary, fontSize: 12, fontWeight: '500' }}>
-            {date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
-  const renderMessage = React.useCallback(({ item, index }) => {
-    const previousMessage = messages[index + 1]; // Messages are sorted desc, so previous is +1
-    // Actually, messages in FlatList usually sorted ascending for chat?
-    // Let's check loadSmsMessages: .sort((a, b) => a.date - b.date);
-    // So messages[0] is oldest.
-    // Wait, typical chat flatlist with inverted={false} means index 0 is top (oldest).
-    // Let's assume index 0 is oldest.
-    // Then previous message is index - 1.
-
-    // In loadSmsMessages: 100:         .sort((a, b) => a.date - b.date); 
-    // This sorts ascending (oldest first).
-    // So for item at index `i`, previous message is `i - 1`.
-
-    const prevMsg = index > 0 ? messages[index - 1] : null;
-    const showDate = shouldShowDateSeparator(item, prevMsg);
-
-    return (
-      <View>
-        {showDate && renderDateSeparator(item.date)}
-        <Reanimated.View
-          entering={item.sender === "me" ? FadeInRight.springify() : FadeInLeft.springify()}
-          style={{ marginBottom: 4 }}
-        >
-          <TouchableWithoutFeedback
-            onLongPress={() => handleLongPress(item)}
-            onPress={() => handleMessagePress(item)}
-            delayLongPress={300}
-          >
-            <View
-              style={[
-                styles.messageContainer,
-                item.sender === "me"
-                  ? [styles.myMessage, { backgroundColor: theme.chatMyBubble }]
-                  : [styles.otherMessage, { backgroundColor: theme.chatOtherBubble }],
-                selectedMessages.includes(item.id) && { backgroundColor: theme.primary + '80', borderColor: theme.primary, borderWidth: 1 } // Highlight selected
-              ]}>
-              <Text style={[
-                styles.messageText,
-                item.sender === "me"
-                  ? [styles.myMessageText, { color: theme.chatMyText }]
-                  : [styles.otherMessageText, { color: theme.chatOtherText }]
-              ]}>
-                {item.text}
-              </Text>
-              <Text>
-                {item.imageUri && (
-                  <Image
-                    source={{ uri: item.imageUri }}
-                    style={{ width: 200, height: 200, borderRadius: 8, marginTop: 4 }}
-                    resizeMode="cover"
-                  />
-                )}
-                <View style={styles.messageFooter}>
-                  <Text style={[
-                    styles.timeText,
-                    item.sender === "me"
-                      ? [styles.myTimeText, { color: 'rgba(255,255,255,0.7)' }]
-                      : [styles.otherTimeText, { color: theme.textSecondary }]
-                  ]}>
-                    {item.time}
-                    {item.isEdited && <Text style={{ fontStyle: 'italic', fontSize: 10 }}> (edited)</Text>}
-                  </Text>
-                </View>
-              </Text>
-              {selectedMessages.includes(item.id) && <Check size={14} color={theme.text} style={{ marginLeft: 8 }} />}
-            </View>
-
-          </TouchableWithoutFeedback>
-        </Reanimated.View>
-      </View >
-    );
-  }, [theme, handleLongPress, handleMessagePress, selectedMessages, messages]);
-
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     if (flatListRef.current && messages.length > 0) {
-      flatListRef.current.scrollToEnd({ animated: true });
+      flatListRef.current.scrollToEnd({ animated: false });
     }
-  };
+  }, [messages.length]);
+
+  const handleScroll = useCallback(({ nativeEvent }) => {
+    if (nativeEvent.contentOffset.y <= 64) {
+      handleLoadOlder();
+    }
+  }, [handleLoadOlder]);
+
+  // Only scroll to bottom once after initial load
+  useEffect(() => {
+    if (messages.length > 0 && !hasScrolledToBottom.current) {
+      setTimeout(() => {
+        scrollToBottom();
+        hasScrolledToBottom.current = true;
+      }, 100);
+    }
+  }, [messages.length, scrollToBottom]);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -447,19 +571,24 @@ export default function ChatScreen() {
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
     };
-  }, []);
+  }, [scrollToBottom]);
+
+  const androidKeyboardOffset = Platform.OS === 'android' ? keyboardHeight : 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.surface }]}>
-      <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
+    <ScreenContainer
+      backgroundColor={theme.surface}
+      statusBarStyle={theme.statusBar}
+      statusBarBackgroundColor={theme.statusBg}
+      edges={['top', 'left', 'right']}
+    >
       <KeyboardAvoidingView
         style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         enabled={Platform.OS === 'ios'}
       >
-
-        {/* Enhanced Header */}
+        <View style={styles.chatBody}>
         <View style={[styles.header, { backgroundColor: isSelectionMode ? theme.surface : theme.background, borderBottomColor: theme.border }]}>
           {isSelectionMode ? (
             <>
@@ -470,6 +599,16 @@ export default function ChatScreen() {
                 <Text style={[styles.headerName, { color: theme.text }]}>{selectedMessages.length} Selected</Text>
               </View>
               <View style={styles.headerActions}>
+                {selectedMessages.length >= 1 && (
+                  <TouchableOpacity style={styles.iconButton} onPress={handleCopySelected}>
+                    <Copy size={22} color={theme.text} />
+                  </TouchableOpacity>
+                )}
+                {selectedMessages.length >= 1 && (
+                  <TouchableOpacity style={styles.iconButton} onPress={handleForwardSelected}>
+                    <Share2 size={22} color={theme.text} />
+                  </TouchableOpacity>
+                )}
                 {selectedMessages.length === 1 && messages.find(m => m.id === selectedMessages[0])?.sender === 'me' && (
                   <TouchableOpacity style={styles.iconButton} onPress={handleEditSelected}>
                     <Edit2 size={22} color={theme.text} />
@@ -519,27 +658,42 @@ export default function ChatScreen() {
           {/* End of Conditional Header Content */}
         </View>
 
-        <PinchGestureHandler onGestureEvent={onPinchEvent}>
-          <Reanimated.View style={[{ flex: 1 }, animatedStyle]}>
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={renderMessage}
-              extraData={selectedMessages}
-              style={styles.messagesList}
-              contentContainerStyle={styles.messagesContainer}
-              showsVerticalScrollIndicator={false}
-              onContentSizeChange={scrollToBottom}
-              onLayout={scrollToBottom}
-            />
-          </Reanimated.View>
-        </PinchGestureHandler>
+        {initialLoading && messages.length === 0 ? (
+          <MessageSkeleton theme={theme} />
+        ) : (
+        <OptimizedList
+          ref={flatListRef}
+          data={filteredMessages}
+          keyExtractor={msgKeyExtractor}
+          renderItem={renderMessage}
+          extraData={selectedMessageSet}
+          estimatedItemSize={72}
+          initialNumToRender={20}
+          windowSize={11}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContainer}
+          showsVerticalScrollIndicator={false}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0,
+            autoscrollToTopThreshold: 80,
+          }}
+          ListHeaderComponent={
+            loadingMore ? (
+              <ActivityIndicator size="small" color={theme.primary} style={{ marginVertical: 12 }} />
+            ) : null
+          }
+        />
+        )}
 
         <View style={[
           styles.inputContainer,
-          { backgroundColor: theme.background, borderTopColor: theme.border },
-          Platform.OS === 'android' && keyboardHeight > 0 && { paddingBottom: 8 }
+          {
+            backgroundColor: theme.background,
+            borderTopColor: theme.border,
+            paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 8 : 12) + androidKeyboardOffset,
+          },
         ]}>
           {editingMessage && (
             <View style={[styles.editingBanner, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
@@ -604,22 +758,38 @@ export default function ChatScreen() {
           <TouchableWithoutFeedback onPress={() => setIsProfileMenuVisible(false)}>
             <View style={styles.modalOverlay}>
               <View style={styles.menuContainer}>
-                <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                  <Text style={styles.menuText}>Settings</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  handleMarkUnread();
+                }}>
+                  <Text style={styles.menuText}>Mark as Unread</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                  <Text style={styles.menuText}>Delete Chat</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  navigation.navigate('Blocked');
+                }}>
+                  <Text style={styles.menuText}>Blocked Contacts</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.menuItem} onPress={() => setIsProfileMenuVisible(false)}>
-                  <Text style={styles.menuText}>Block Contact</Text>
+                <TouchableOpacity style={styles.menuItem} onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  handleBlockContact();
+                }}>
+                  <Text style={[styles.menuText, { color: '#ef4444' }]}>Block Contact</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.menuItem} onPress={() => {
+                  setIsProfileMenuVisible(false);
+                  handleDeleteChat();
+                }}>
+                  <Text style={[styles.menuText, { color: '#ef4444' }]}>Delete Chat</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </TouchableWithoutFeedback>
         </Modal>
 
+        </View>
       </KeyboardAvoidingView>
-    </View>
+    </ScreenContainer>
   );
 }
 
@@ -629,6 +799,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
   },
   keyboardContainer: {
+    flex: 1,
+  },
+  chatBody: {
     flex: 1,
   },
   header: {
@@ -749,6 +922,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 4,
   },
+  messageFooter: {
+    marginTop: 4,
+  },
   timeText: {
     fontSize: 11,
   },
@@ -787,7 +963,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
     paddingHorizontal: 12,
     paddingVertical: 8,
-    paddingBottom: Platform.OS === 'ios' ? 8 : 12,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -2 },

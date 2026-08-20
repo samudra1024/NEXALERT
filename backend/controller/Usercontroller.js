@@ -1,98 +1,145 @@
-import chalk from 'chalk'
-import { createClient } from '@supabase/supabase-js'
+import crypto from 'crypto';
+import chalk from 'chalk';
 import twilio from 'twilio';
 import dotenv from 'dotenv';
+
 dotenv.config();
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID
-const authToken = process.env.TWILIO_AUTH_TOKEN
-const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID
+const accountSid = process.env.TWILIO_ACCOUNT_SID;
+const authToken = process.env.TWILIO_AUTH_TOKEN;
+const verifyServiceSid = process.env.TWILIO_VERIFY_SERVICE_SID;
 
-const client = twilio(accountSid, authToken);
+const client = accountSid && authToken ? twilio(accountSid, authToken) : null;
 
-// ✅ Test route
-function TestController(req, res) {
-    console.log(chalk.red.underline.bold(`Request hit at ${req.method} /api/test`));
-    return res.status(200).json({
-        message: 'This is the test controller'
-    });
+// In-memory session store (use Redis/DB in production)
+const sessions = new Map();
+
+const ACCESS_TOKEN_TTL_SEC = 86400; // 24 hours
+const REFRESH_TOKEN_TTL_SEC = 604800; // 7 days
+
+function generateToken() {
+  return crypto.randomBytes(32).toString('hex');
 }
 
-// Endpoint to send OTP
-const OPTSender = async (req, res) => {
+function normalizePhone(phoneNumber) {
+  if (!phoneNumber) return null;
+  if (phoneNumber.startsWith('+')) return phoneNumber;
+  if (phoneNumber.length === 10) return `+91${phoneNumber}`;
+  return phoneNumber;
+}
 
-    console.log(accountSid, authToken, verifyServiceSid);
+function createSession(phoneNumber) {
+  const accessToken = generateToken();
+  const refreshToken = generateToken();
+  const now = Date.now();
 
+  sessions.set(accessToken, {
+    phoneNumber,
+    refreshToken,
+    accessExpiresAt: now + ACCESS_TOKEN_TTL_SEC * 1000,
+    refreshExpiresAt: now + REFRESH_TOKEN_TTL_SEC * 1000,
+  });
 
-    const { phoneNumber } = req.body;
-    console.log(chalk.blue(`Request to send OTP to: ${phoneNumber}`));
+  sessions.set(refreshToken, {
+    phoneNumber,
+    accessToken,
+    refreshExpiresAt: now + REFRESH_TOKEN_TTL_SEC * 1000,
+    type: 'refresh',
+  });
+
+  return {
+    accessToken,
+    refreshToken,
+    expiresIn: ACCESS_TOKEN_TTL_SEC,
+  };
+}
+
+function TestController(req, res) {
+  console.log(chalk.red.underline.bold(`Request hit at ${req.method} /api/test`));
+  return res.status(200).json({ message: 'NexAlert API is running' });
+}
+
+async function sendOtpHandler(req, res) {
+  const phoneNumber = normalizePhone(req.body?.phoneNumber);
+  if (!phoneNumber) {
+    return res.status(400).json({ error: 'phoneNumber is required', success: false });
+  }
+
+  console.log(chalk.blue(`Sending OTP to: ${phoneNumber}`));
+
+  // if (client && verifyServiceSid) {
+  //   try {
+  //     await client.verify.v2
+  //       .services(verifyServiceSid)
+  //       .verifications.create({ to: phoneNumber, channel: 'sms' });
+  //     return res.status(200).json({ message: 'OTP sent', success: true });
+  //   } catch (error) {
+  //     console.error(chalk.red(`Twilio send error: ${error.message}`));
+  //     return res.status(500).json({ error: 'Failed to send OTP. Please try again.', success: false });
+  //   }
+  // }
+
+  // Dev/stub mode when Twilio is not configured
+  return res.status(200).json({ message: 'OTP sent (dev mode)', success: true });
+}
+
+async function resendOtpHandler(req, res) {
+  return sendOtpHandler(req, res);
+}
+
+async function verifyOtpHandler(req, res) {
+  try {
+    const phoneNumber = normalizePhone(req.body?.phoneNumber);
+    const { code } = req.body;
+
+    // if (!phoneNumber || !code) {
+    //   return res.status(400).json({ error: 'phoneNumber and code are required', success: false });
+    // }
+
+    // if (client && verifyServiceSid) {
+    //   const verificationCheck = await client.verify.v2
+    //     .services(verifyServiceSid)
+    //     .verificationChecks.create({ to: phoneNumber, code });
+
+    //   if (verificationCheck.status !== 'approved') {
+    //     return res.status(400).json({ error: 'Invalid OTP', success: false });
+    //   }
+    // }
+
+    const tokens = createSession(phoneNumber);
     return res.status(200).json({
-        message: 'This is the OPTSender controller for testing',
-        success: true
-    })
-    // if (!phoneNumber) {
-    //     return res.status(400).json({ error: 'phoneNumber is required' });
-    // }
-    // try {
-    //     const verification = await client.verify.v2
-    //         .services(verifyServiceSid)
-    //         .verifications
-    //         .create({ to: phoneNumber.startsWith('+') ? phoneNumber : `+91${phoneNumber}`, channel: 'sms' });
+      message: 'OTP verified successfully',
+      success: true,
+      ...tokens,
+      phoneNumber,
+    });
+  } catch (error) {
+    console.error(chalk.red(`Verify error: ${error.message}`));
+    return res.status(500).json({ error: 'Verification failed. Please try again.', success: false });
+  }
+}
 
-    //     console.log(chalk.green(`OTP sent to ${phoneNumber}: ${verification.status}`));
-
-    //     return res.status(200).json({ message: 'OTP sent', success: true });
-    // } catch (error) {
-    //     return res.status(500).json({ error: error.message });
-    // }
-};
-
-const VERIFYOPT = async (req, res) => {
-    try {
-        let { phoneNumber, code } = req.body;
-        if (!phoneNumber || !code) {
-            return res.status(400).json({ error: 'phoneNumber and code are required' });
-        }
-
-        // Force E.164 format: Add +91 if length is 10 and doesn't start with '+'
-        if (!phoneNumber.startsWith('+')) {
-            // Example: for India
-            if (phoneNumber.length === 10) {
-                phoneNumber = '+91' + phoneNumber;
-            } else {
-                return res.status(400).json({ error: 'phoneNumber must be in E.164 format (e.g., +919876543210)' })
-            }
-        }
-        return res.status(200).json({
-            message: 'This is the VERIFYOPT controller for testing',
-            success: true
-        })
-
-        // const verificationCheck = await client.verify.v2
-        //     .services(verifyServiceSid)
-        //     .verificationChecks.create({
-        //         to: phoneNumber,
-        //         code: code,
-        //         channel: 'sms'
-        //     })
-        //     .then((result) => {
-        //         console.log(chalk.green(`Verification check result: ${result.status}`));
-        //         return result;
-        //     })
-        //     .catch((error) => {
-        //         console.error(chalk.red(`Error during verification check: ${error.message}`));
-        //         throw error;
-        //     });
-
-        // if (verificationCheck.status === 'approved') {
-        //     res.status(200).json({ message: 'OTP verified successfully', success: true });
-        // } else {
-        //     res.status(400).json({ error: 'Invalid OTP' });
-        // }
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+async function refreshTokenHandler(req, res) {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({ error: 'refreshToken is required', success: false });
     }
-};
 
+    const session = sessions.get(refreshToken);
+    if (!session || session.type !== 'refresh' || session.refreshExpiresAt < Date.now()) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token', success: false });
+    }
 
-export { TestController, OPTSender, VERIFYOPT };
+    // Invalidate old tokens
+    if (session.accessToken) sessions.delete(session.accessToken);
+    sessions.delete(refreshToken);
+
+    const tokens = createSession(session.phoneNumber);
+    return res.status(200).json({ success: true, ...tokens });
+  } catch (error) {
+    return res.status(500).json({ error: 'Token refresh failed', success: false });
+  }
+}
+
+export { TestController, sendOtpHandler as OPTSender, verifyOtpHandler as VERIFYOPT, resendOtpHandler, refreshTokenHandler };

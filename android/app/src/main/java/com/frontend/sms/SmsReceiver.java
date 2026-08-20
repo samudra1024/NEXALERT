@@ -8,7 +8,9 @@ import android.os.Bundle;
 import android.telephony.SmsMessage;
 import android.provider.Telephony;
 import android.content.ContentValues;
+import android.provider.ContactsContract;
 import android.net.Uri;
+import java.util.concurrent.ConcurrentHashMap;
 import android.app.NotificationManager;
 import android.app.NotificationChannel;
 import android.app.Notification;
@@ -24,6 +26,9 @@ import com.frontend.MainActivity;
 public class SmsReceiver extends BroadcastReceiver {
     
     private static final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private static final ConcurrentHashMap<String, String> contactNameCache = new ConcurrentHashMap<>();
+    private static final long CONTACT_CACHE_TTL_MS = 10 * 60 * 1000;
+    private static final ConcurrentHashMap<String, Long> contactCacheTimestamps = new ConcurrentHashMap<>();
 
     @Override
     public void onReceive(Context context, Intent intent) {
@@ -106,6 +111,8 @@ public class SmsReceiver extends BroadcastReceiver {
                             } else {
                                 android.util.Log.d("SmsReceiver", "Spam blocked! Discarding notification for: " + sender);
                             }
+
+                            com.frontend.bridge.SmsModule.emitSmsReceived(sender, messageBody, timestamp);
                         }
                     }
                 }
@@ -191,10 +198,12 @@ public class SmsReceiver extends BroadcastReceiver {
                 channel.setShowBadge(true);
                 notificationManager.createNotificationChannel(channel);
             }
+
+            String displayName = resolveContactDisplayName(context, sender);
             
             // Create intent to open the app when notification is tapped
             Intent intent = new Intent(context, MainActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             intent.putExtra("sender", sender);
             
             PendingIntent pendingIntent = PendingIntent.getActivity(
@@ -207,7 +216,7 @@ public class SmsReceiver extends BroadcastReceiver {
             // Build notification
             NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
                 .setSmallIcon(android.R.drawable.ic_dialog_email)
-                .setContentTitle("New message from " + sender + " [" + category + "]")
+                .setContentTitle(displayName)
                 .setContentText(message)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -220,10 +229,107 @@ public class SmsReceiver extends BroadcastReceiver {
             int notificationId = sender.hashCode();
             notificationManager.notify(notificationId, builder.build());
             
-            android.util.Log.d("SmsReceiver", "Notification shown for SMS from: " + sender);
+            android.util.Log.d("SmsReceiver", "Notification shown for SMS from: " + displayName);
             
         } catch (Exception e) {
             android.util.Log.e("SmsReceiver", "Error showing notification", e);
         }
+    }
+
+    private String resolveContactDisplayName(Context context, String sender) {
+        if (sender == null || sender.isEmpty()) {
+            return "Unknown";
+        }
+
+        String cached = getCachedContactName(sender);
+        if (cached != null) {
+            return cached;
+        }
+
+        String contactName = lookupContactName(context.getContentResolver(), sender);
+        String displayName = (contactName != null && !contactName.isEmpty())
+            ? contactName
+            : formatPhoneNumber(sender);
+
+        cacheContactName(sender, displayName);
+        return displayName;
+    }
+
+    private String getCachedContactName(String sender) {
+        Long timestamp = contactCacheTimestamps.get(sender);
+        if (timestamp != null && System.currentTimeMillis() - timestamp < CONTACT_CACHE_TTL_MS) {
+            return contactNameCache.get(sender);
+        }
+        return null;
+    }
+
+    private void cacheContactName(String sender, String name) {
+        contactNameCache.put(sender, name);
+        contactCacheTimestamps.put(sender, System.currentTimeMillis());
+    }
+
+    private String lookupContactName(android.content.ContentResolver contentResolver, String phoneNumber) {
+        String[] variants = buildPhoneVariants(phoneNumber);
+        for (String variant : variants) {
+            if (variant == null || variant.isEmpty()) continue;
+
+            Uri lookupUri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(variant)
+            );
+
+            android.database.Cursor cursor = contentResolver.query(
+                lookupUri,
+                new String[]{ ContactsContract.PhoneLookup.DISPLAY_NAME },
+                null, null, null
+            );
+
+            if (cursor != null) {
+                try {
+                    if (cursor.moveToFirst()) {
+                        String name = cursor.getString(
+                            cursor.getColumnIndexOrThrow(ContactsContract.PhoneLookup.DISPLAY_NAME)
+                        );
+                        if (name != null && !name.isEmpty()) {
+                            return name;
+                        }
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+        }
+        return null;
+    }
+
+    private String[] buildPhoneVariants(String phoneNumber) {
+        String digits = phoneNumber.replaceAll("[^0-9]", "");
+        java.util.ArrayList<String> variants = new java.util.ArrayList<>();
+        variants.add(phoneNumber);
+        variants.add(digits);
+
+        if (digits.length() >= 10) {
+            String last10 = digits.substring(digits.length() - 10);
+            variants.add(last10);
+            variants.add("+91" + last10);
+            variants.add("91" + last10);
+            variants.add("0" + last10);
+        }
+
+        return variants.toArray(new String[0]);
+    }
+
+    private String formatPhoneNumber(String phone) {
+        if (phone == null || phone.isEmpty()) {
+            return "Unknown";
+        }
+
+        String digits = phone.replaceAll("[^0-9]", "");
+        if (digits.length() >= 10) {
+            String last10 = digits.substring(digits.length() - 10);
+            return "+91 " + last10.substring(0, 5) + " " + last10.substring(5);
+        }
+
+        return phone;
     }
 }

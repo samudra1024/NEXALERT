@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>frontend</string>
+	<string>NexAlert</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -34,6 +34,12 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
+	<key>NSContactsUsageDescription</key>
+	<string>NexAlert uses your contacts to display names in messages.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>NexAlert uses the camera to update your profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>NexAlert uses your photo library to update your profile photo.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

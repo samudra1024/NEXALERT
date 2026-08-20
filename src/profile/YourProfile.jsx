@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -6,30 +6,75 @@ import {
     TouchableOpacity,
     Image,
     Alert,
-    StatusBar,
-    Dimensions
+    TextInput,
+    ScrollView,
+    Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useTheme } from '../context/ThemeContext';
-import ScalePressable from '../components/animations/ScalePressable';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import AuthService from '../services/authService';
+import useAppStore from '../store/useAppStore';
+import { formatPhoneNumber } from '../utils/contactUtils';
+import { ScreenContainer } from '../components/ScreenContainer';
+import { ArrowLeft, Camera, Edit2, Check } from 'lucide-react-native';
 
-const { width } = Dimensions.get('window');
-
-// Placeholder avatars for simulation
-const AVATARS = [
-    'https://ui-avatars.com/api/?name=User&background=random&size=200',
-    'https://ui-avatars.com/api/?name=Alex&background=2563eb&color=fff&size=200',
-    'https://ui-avatars.com/api/?name=Sam&background=fd79a8&color=fff&size=200',
-    'https://ui-avatars.com/api/?name=Jordan&background=fdcb6e&color=fff&size=200'
-];
+const PROFILE_IMAGE_KEY = 'user_profile_image';
+const PROFILE_NAME_KEY = 'user_display_name';
 
 export default function YourProfile() {
     const { theme } = useTheme();
     const navigation = useNavigation();
-    const [profileImage, setProfileImage] = useState(AVATARS[0]);
-    const [clickCount, setClickCount] = useState(0);
-    const [showTerms, setShowTerms] = useState(false);
+    const userPhone = useAppStore(state => state.userPhone);
+    const [profileImage, setProfileImage] = useState(null);
+    const [displayName, setDisplayName] = useState('User');
+    const [phoneNumber, setPhoneNumber] = useState('');
+    const [isEditingName, setIsEditingName] = useState(false);
+    const [tempName, setTempName] = useState('');
+
+    // Load saved profile data on mount
+    useEffect(() => {
+        loadProfileData();
+    }, [userPhone]);
+
+    const loadProfileData = async () => {
+        try {
+            const savedImage = await AsyncStorage.getItem(PROFILE_IMAGE_KEY);
+            const savedName = await AsyncStorage.getItem(PROFILE_NAME_KEY);
+            const authPhone = userPhone || await AuthService.getUserPhone();
+            if (savedImage) setProfileImage(savedImage);
+            if (savedName) setDisplayName(savedName);
+            if (authPhone) setPhoneNumber(formatPhoneNumber(authPhone));
+        } catch (e) {
+            console.error('Error loading profile data:', e);
+        }
+    };
+
+    const saveProfileImage = async (uri) => {
+        try {
+            await AsyncStorage.setItem(PROFILE_IMAGE_KEY, uri);
+            setProfileImage(uri);
+        } catch (e) {
+            console.error('Error saving profile image:', e);
+        }
+    };
+
+    const saveDisplayName = async (name) => {
+        try {
+            const trimmed = name.trim();
+            if (!trimmed) {
+                Alert.alert('Error', 'Display name cannot be empty.');
+                return;
+            }
+            await AsyncStorage.setItem(PROFILE_NAME_KEY, trimmed);
+            setDisplayName(trimmed);
+            setIsEditingName(false);
+        } catch (e) {
+            console.error('Error saving display name:', e);
+        }
+    };
 
     const handleCameraPress = () => {
         Alert.alert(
@@ -38,48 +83,91 @@ export default function YourProfile() {
             [
                 {
                     text: "Camera",
-                    onPress: () => simulateImageSelection()
+                    onPress: () => pickImage('camera'),
                 },
                 {
                     text: "Gallery",
-                    onPress: () => simulateImageSelection()
+                    onPress: () => pickImage('gallery'),
                 },
+                ...(profileImage ? [{
+                    text: "Remove Photo",
+                    style: "destructive",
+                    onPress: async () => {
+                        await AsyncStorage.removeItem(PROFILE_IMAGE_KEY);
+                        setProfileImage(null);
+                    },
+                }] : []),
                 {
                     text: "Cancel",
-                    style: "cancel"
-                }
+                    style: "cancel",
+                },
             ]
         );
     };
 
-    const simulateImageSelection = () => {
-        // Simulate picking a new image by cycling through avatars
-        const nextIndex = (clickCount + 1) % AVATARS.length;
-        setProfileImage(AVATARS[nextIndex]);
-        setClickCount(prev => prev + 1);
-        Alert.alert("Success", "Profile photo updated successfully!");
+    const pickImage = async (source) => {
+        const options = {
+            mediaType: 'photo',
+            quality: 0.8,
+            maxWidth: 600,
+            maxHeight: 600,
+        };
+
+        try {
+            let result;
+            if (source === 'camera') {
+                result = await launchCamera(options);
+            } else {
+                result = await launchImageLibrary(options);
+            }
+
+            if (result.didCancel) return;
+            if (result.errorCode) {
+                Alert.alert('Error', result.errorMessage || 'Something went wrong.');
+                return;
+            }
+
+            const asset = result.assets?.[0];
+            if (asset?.uri) {
+                await saveProfileImage(asset.uri);
+            }
+        } catch (error) {
+            console.error('Image picker error:', error);
+            Alert.alert('Error', 'Failed to pick image. Please try again.');
+        }
+    };
+
+    const getInitial = () => {
+        return displayName ? displayName.charAt(0).toUpperCase() : 'U';
+    };
+
+    const startEditName = () => {
+        setTempName(displayName);
+        setIsEditingName(true);
     };
 
     return (
-        <View style={[styles.container, { backgroundColor: theme.background }]}>
-            <StatusBar barStyle={theme.statusBar} backgroundColor={theme.statusBg} />
-
+        <ScreenContainer
+            backgroundColor={theme.background}
+            statusBarStyle={theme.statusBar}
+            statusBarBackgroundColor={theme.statusBg}
+        >
             {/* Header */}
             <View style={[styles.header, { borderBottomColor: theme.border }]}>
-                <ScalePressable onPress={() => navigation.goBack()} style={styles.backButton}>
-                    <Text style={[styles.backButtonText, { color: theme.text }]}>←</Text>
-                </ScalePressable>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                    <ArrowLeft size={24} color={theme.text} />
+                </TouchableOpacity>
                 <Text style={[styles.headerTitle, { color: theme.text }]}>Profile</Text>
                 <View style={{ width: 40 }} />
             </View>
 
-            <View style={styles.content}>
+            <ScrollView contentContainerStyle={styles.content}>
                 {/* Animated Heading */}
                 <Animated.Text
                     entering={FadeInDown.duration(800).springify()}
                     style={[styles.heading, { color: theme.text }]}
                 >
-                    Customize how you’re seen
+                    Customize how you're seen
                 </Animated.Text>
 
                 <Animated.Text
@@ -94,11 +182,17 @@ export default function YourProfile() {
                     entering={FadeInDown.delay(400).duration(800).springify()}
                     style={styles.avatarContainer}
                 >
-                    <View style={[styles.avatarWrapper, { borderColor: theme.border }]}>
-                        <Image
-                            source={{ uri: profileImage }}
-                            style={styles.avatar}
-                        />
+                    <View style={[styles.avatarWrapper, { borderColor: theme.primary + '40' }]}>
+                        {profileImage ? (
+                            <Image
+                                source={{ uri: profileImage }}
+                                style={styles.avatar}
+                            />
+                        ) : (
+                            <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: theme.primary }]}>
+                                <Text style={styles.avatarInitial}>{getInitial()}</Text>
+                            </View>
+                        )}
                     </View>
 
                     {/* Camera Button */}
@@ -107,75 +201,66 @@ export default function YourProfile() {
                         onPress={handleCameraPress}
                         activeOpacity={0.8}
                     >
-                        <Text style={styles.cameraIcon}>📷</Text>
+                        <Camera size={20} color="#fff" />
                     </TouchableOpacity>
                 </Animated.View>
 
-                {/* Profile Details (Enhancement) */}
+                {/* Profile Details */}
                 <Animated.View
                     entering={FadeInDown.delay(600).duration(800).springify()}
                     style={styles.infoContainer}
                 >
+                    {/* Display Name - Editable */}
                     <View style={[styles.infoItem, { backgroundColor: theme.surface }]}>
                         <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Display Name</Text>
-                        <Text style={[styles.infoValue, { color: theme.text }]}>User</Text>
+                        <View style={styles.editableRow}>
+                            {isEditingName ? (
+                                <>
+                                    <TextInput
+                                        style={[styles.nameInput, {
+                                            color: theme.text,
+                                            borderBottomColor: theme.primary,
+                                        }]}
+                                        value={tempName}
+                                        onChangeText={setTempName}
+                                        autoFocus
+                                        maxLength={30}
+                                        placeholder="Enter your name"
+                                        placeholderTextColor={theme.textSecondary}
+                                        onSubmitEditing={() => saveDisplayName(tempName)}
+                                    />
+                                    <TouchableOpacity
+                                        style={[styles.editButton, { backgroundColor: theme.primary }]}
+                                        onPress={() => saveDisplayName(tempName)}
+                                    >
+                                        <Check size={18} color="#fff" />
+                                    </TouchableOpacity>
+                                </>
+                            ) : (
+                                <>
+                                    <Text style={[styles.infoValue, { color: theme.text }]}>{displayName}</Text>
+                                    <TouchableOpacity
+                                        style={[styles.editButton, { backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border }]}
+                                        onPress={startEditName}
+                                    >
+                                        <Edit2 size={16} color={theme.primary} />
+                                    </TouchableOpacity>
+                                </>
+                            )}
+                        </View>
                     </View>
 
+                    {/* Phone Number - Read Only */}
                     <View style={[styles.infoItem, { backgroundColor: theme.surface }]}>
                         <Text style={[styles.infoLabel, { color: theme.textSecondary }]}>Phone Number</Text>
-                        <Text style={[styles.infoValue, { color: theme.text }]}>+1 234 567 8900</Text>
-                    </View>
-                </Animated.View>
-
-                {/* About Section */}
-                <Animated.View
-                    entering={FadeInDown.delay(800).duration(800).springify()}
-                    style={styles.aboutContainer}
-                >
-                    <Text style={[styles.sectionTitle, { color: theme.text }]}>About App</Text>
-                    <View style={[styles.aboutCard, { backgroundColor: theme.surface }]}>
-                        <Text style={[styles.appName, { color: theme.primary }]}>NEXALERT</Text>
-                        <Text style={[styles.appTagline, { color: theme.textSecondary }]}>Your Shield Against SMS Scams</Text>
-
-                        <Text style={[styles.appDescription, { color: theme.text }]}>
-                            NEXALERT protects you from fraudulent SMS messages while providing a reliable messaging experience.
+                        <Text style={[styles.infoValue, { color: theme.text }]}>
+                            {phoneNumber || 'Not available'}
                         </Text>
-
-                        <TouchableOpacity onPress={() => setShowTerms(!showTerms)} style={{ marginBottom: 16 }}>
-                            <Text style={{ color: theme.primary, fontWeight: '600' }}>
-                                {showTerms ? "Hide Terms & Conditions" : "Read Terms & Conditions"}
-                            </Text>
-                        </TouchableOpacity>
-
-                        {showTerms && (
-                            <Animated.View entering={FadeInDown.duration(300)} style={{ marginBottom: 16 }}>
-                                <Text style={{ color: theme.text, fontSize: 13, lineHeight: 18 }}>
-                                    1. <Text style={{ fontWeight: 'bold' }}>Usage:</Text> Use this app responsibly.{'\n'}
-                                    2. <Text style={{ fontWeight: 'bold' }}>Privacy:</Text> Your messages are processed locally.{'\n'}
-                                    3. <Text style={{ fontWeight: 'bold' }}>Liability:</Text> We are not liable for lost data.
-                                </Text>
-                            </Animated.View>
-                        )}
-
-                        <View style={styles.valueItem}>
-                            <Text style={[styles.valueTitle, { color: theme.text }]}>⚡ Speed & Security</Text>
-                            <Text style={[styles.valueDesc, { color: theme.textSecondary }]}>Real-time analysis without compromising speed.</Text>
-                        </View>
-
-                        <View style={styles.valueItem}>
-                            <Text style={[styles.valueTitle, { color: theme.text }]}>🔒 Privacy First</Text>
-                            <Text style={[styles.valueDesc, { color: theme.textSecondary }]}>Your data stays on your device.</Text>
-                        </View>
-
-                        <View style={styles.valueItem}>
-                            <Text style={[styles.valueTitle, { color: theme.text }]}>✨ Simplicity</Text>
-                            <Text style={[styles.valueDesc, { color: theme.textSecondary }]}>A clean, distraction-free interface.</Text>
-                        </View>
                     </View>
                 </Animated.View>
 
-            </View>
-        </View>
+            </ScrollView>
+        </ScreenContainer>
     );
 }
 
@@ -195,23 +280,20 @@ const styles = StyleSheet.create({
         padding: 8,
         marginLeft: -8,
     },
-    backButtonText: {
-        fontSize: 24,
-        fontWeight: '300',
-    },
     headerTitle: {
         fontSize: 18,
         fontWeight: '600',
+        fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
     },
     content: {
-        flex: 1,
         alignItems: 'center',
         paddingTop: 40,
         paddingHorizontal: 24,
+        paddingBottom: 40,
     },
     heading: {
         fontSize: 28,
-        fontWeight: '800', // Bold and prominent
+        fontWeight: '800',
         textAlign: 'center',
         marginBottom: 8,
         letterSpacing: 0.5,
@@ -228,7 +310,7 @@ const styles = StyleSheet.create({
     },
     avatarWrapper: {
         padding: 4,
-        borderRadius: 75, // Half of size + padding
+        borderRadius: 75,
         borderWidth: 2,
         borderStyle: 'dashed',
     },
@@ -236,7 +318,15 @@ const styles = StyleSheet.create({
         width: 140,
         height: 140,
         borderRadius: 70,
-        backgroundColor: '#eee',
+    },
+    avatarPlaceholder: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarInitial: {
+        fontSize: 56,
+        fontWeight: '700',
+        color: '#FFFFFF',
     },
     cameraButton: {
         position: 'absolute',
@@ -253,9 +343,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.2,
         shadowRadius: 4,
-    },
-    cameraIcon: {
-        fontSize: 20,
     },
     infoContainer: {
         width: '100%',
@@ -275,49 +362,26 @@ const styles = StyleSheet.create({
     infoValue: {
         fontSize: 18,
         fontWeight: '500',
+        flex: 1,
     },
-    aboutContainer: {
-        width: '100%',
-        marginTop: 24,
-        marginBottom: 40,
+    editableRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
     },
-    sectionTitle: {
-        fontSize: 20,
-        fontWeight: '700',
-        marginBottom: 12,
-        paddingHorizontal: 4,
-    },
-    aboutCard: {
-        padding: 20,
-        borderRadius: 20,
-    },
-    appName: {
+    nameInput: {
         fontSize: 18,
-        fontWeight: '800',
-        marginBottom: 4,
-        letterSpacing: 1,
-    },
-    appTagline: {
-        fontSize: 14,
         fontWeight: '500',
-        marginBottom: 16,
-        fontStyle: 'italic',
+        flex: 1,
+        borderBottomWidth: 2,
+        paddingVertical: 4,
+        marginRight: 12,
     },
-    appDescription: {
-        fontSize: 14,
-        lineHeight: 22,
-        marginBottom: 20,
-    },
-    valueItem: {
-        marginBottom: 16,
-    },
-    valueTitle: {
-        fontSize: 14,
-        fontWeight: '700',
-        marginBottom: 4,
-    },
-    valueDesc: {
-        fontSize: 13,
-        lineHeight: 18,
+    editButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });

@@ -47,7 +47,7 @@ const InfoThree = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0A1E3C', // Dark blue background color
+    backgroundColor: '#ffffffff', // Dark blue background color
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     fontSize: 18,
-    color: '#FFFFFF',
+    color: '#298cff',
     fontWeight: 'bold',
   },
   content: {
@@ -72,13 +72,13 @@ const styles = StyleSheet.create({
     width: 150,
     height: 150,
     resizeMode: 'contain',
-    tintColor: '#FFFFFF',
+    tintColor: '#298cff',
     marginBottom: 30,
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#298cff',
     textAlign: 'center',
     marginBottom: 40, // Space between title and dots
   },
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 5,
   },
   activeDot: {
-    backgroundColor: '#007AFF', // Blue color for the active dot
+    backgroundColor: '#298cff', // Blue color for the active dot
   },
   inactiveDot: {
     backgroundColor: '#F5F5DC', // Beige color for inactive dots
