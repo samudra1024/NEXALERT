@@ -203,7 +203,7 @@ export default function ChatsList() {
   const filteredContacts = useMemo(() => {
     let result = contacts;
 
-    // Category Filter — match ML metadata on latest message per conversation
+    // Category Filter — match aggregated ML metadata per conversation
     if (selectedCategory === 'Spam') {
       result = result.filter(c => c.is_spam === true);
     } else if (selectedCategory === 'All') {
@@ -367,7 +367,7 @@ export default function ChatsList() {
         style={styles.flatList}
         contentContainerStyle={{ paddingBottom: 100 }}
         onEndReached={() => {
-          if (hasMore && !loadingMore && !searchText && selectedCategory === 'All') {
+          if (hasMore && !loadingMore && !searchText) {
             loadSmsMessages(false, page + 1);
           }
         }}

@@ -63,39 +63,53 @@ class SmsController {
     return colors[index];
   }
 
+  static pickConversationCategory(messages) {
+    const validCategories = ['personal', 'otp', 'banking', 'subscription', 'recharge_data'];
+    const classified = messages
+      .filter(msg => !msg.is_spam && validCategories.includes(msg.category))
+      .sort((a, b) => b.date - a.date);
+
+    if (classified.length > 0) {
+      return classified[0].category;
+    }
+
+    return messages[0]?.category ?? 'unknown';
+  }
+
   // Get conversations (grouped by address) with pagination
   static async getConversations(page = 1, limit = 20) {
     try {
       const messages = await this.fetchSmsMessages();
 
-      // Group by address
-      const conversationsMap = {};
-
-      // Sort messages by date descending first to ensuring we capture the latest
-      messages.sort((a, b) => b.date - a.date);
+      // Group all messages by address
+      const messagesByAddress = {};
 
       messages.forEach(msg => {
         const address = msg.address;
-
-        if (!conversationsMap[address]) {
-          conversationsMap[address] = {
-            id: address,
-            name: address, // In a real app, resolve contact name here
-            avatar: address[0] || '?',
-            avatarColor: this.getAvatarColor(address),
-            lastMessage: msg.body,
-            time: new Date(msg.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            rawTime: msg.date,
-            unread: 0,
-            category: msg.category ?? 'unknown',
-            is_spam: msg.is_spam === true,
-          };
+        if (!messagesByAddress[address]) {
+          messagesByAddress[address] = [];
         }
+        messagesByAddress[address].push(msg);
+      });
 
-        // Count unread (type 1 is received)
-        if (msg.read === 0 && msg.type === 1) {
-          conversationsMap[address].unread++;
-        }
+      const conversationsMap = {};
+
+      Object.entries(messagesByAddress).forEach(([address, addressMessages]) => {
+        addressMessages.sort((a, b) => b.date - a.date);
+        const newest = addressMessages[0];
+
+        conversationsMap[address] = {
+          id: address,
+          name: address, // In a real app, resolve contact name here
+          avatar: address[0] || '?',
+          avatarColor: this.getAvatarColor(address),
+          lastMessage: newest.body,
+          time: new Date(newest.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          rawTime: newest.date,
+          unread: addressMessages.filter(msg => msg.read === 0 && msg.type === 1).length,
+          category: this.pickConversationCategory(addressMessages),
+          is_spam: addressMessages.some(msg => msg.is_spam === true),
+        };
       });
 
       // Convert to array
